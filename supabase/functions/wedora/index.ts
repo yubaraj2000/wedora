@@ -389,9 +389,36 @@ async function suggestTasks(req: Request, body: Record<string, unknown>) {
 // ---------- voice: speech → understood action (confirmed in the app) ----------
 const LANG_NAME: Record<string, string> = { "od-IN": "Odia", "hi-IN": "Hindi", "bn-IN": "Bengali", "en-IN": "English" };
 
-async function voice(req: Request) {
+// Speech → text only (used during onboarding, before the wedding exists). Quota-limited per user.
+async function transcribe(req: Request, form: FormData) {
   const user = await caller(req);
-  const form = await req.formData();
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size < 1500) throw new HttpError(400, "no speech heard");
+  if (file.size > 2_000_000) throw new HttpError(413, "That recording is too long. Please keep it under 20 seconds.");
+  await takeQuota(user.id, "transcribe", 1);
+  const hint = String(form.get("lang") ?? "");
+  const stt = new FormData();
+  stt.append("file", file, file.name || "speech.m4a");
+  stt.append("model", "saaras:v4");
+  stt.append("mode", "transcribe");
+  stt.append("language_code", LANG_NAME[hint] && hint !== "en-IN" ? hint : "unknown");
+  const t0 = Date.now();
+  const res = await fetch(`${SARVAM}/speech-to-text`, {
+    method: "POST",
+    headers: { "api-subscription-key": env("SARVAM_API_KEY") },
+    body: stt,
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    console.error(`transcribe ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    throw new HttpError(502, "I couldn't hear that clearly. Please try again, or type it.");
+  }
+  const b = await res.json();
+  return json({ transcript: (b.transcript ?? "").trim(), language: b.language_code ?? hint, ms: Date.now() - t0 });
+}
+
+async function voice(req: Request, form: FormData) {
+  const user = await caller(req);
   const weddingId = String(form.get("wedding_id") ?? "");
   const m = await memberOf(user.id, weddingId);
   const { flags } = await flagsFor(m);
@@ -554,7 +581,7 @@ async function voice(req: Request) {
 
 async function speak(req: Request, body: Record<string, unknown>) {
   const user = await caller(req);
-  await memberOf(user.id, String(body.wedding_id));
+  if (body.wedding_id) await memberOf(user.id, String(body.wedding_id));
   await takeQuota(user.id, "speak");
   const text = clip(body.text, 1200);
   const lang = LANG_NAME[String(body.lang)] ? String(body.lang) : "hi-IN";
@@ -574,7 +601,10 @@ async function route(req: Request): Promise<Response> {
   try {
     if (req.method === "GET" && url.searchParams.get("op") === "health") return await health();
     if (req.method !== "POST") throw new HttpError(405, "POST only");
-    if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) return await voice(req);
+    if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+      const form = await req.formData();
+      return form.get("op") === "transcribe" ? await transcribe(req, form) : await voice(req, form);
+    }
     const body = (await req.json()) as Record<string, unknown>;
     switch (body.op) {
       case "features": {

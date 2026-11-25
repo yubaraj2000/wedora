@@ -27,6 +27,8 @@ const EN = {
   thinking: 'Thinking…',
   retry: 'Try again',
   noHeads: 'No invites yet.',
+  micTap: 'Tap and speak your answer',
+  micListening: 'Listening… pause when you finish',
 };
 
 export type Labels = typeof EN;

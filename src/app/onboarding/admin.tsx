@@ -32,7 +32,8 @@ export default function AdminOnboardingScreen() {
           msgs={o.msgs}
           thinking={o.thinking}
           thinkingLabel={L.thinking}
-          scrollKey={`${o.step}|${o.tasks.length}|${o.taskError ?? ''}`}>
+          scrollKey={`${o.step}|${o.tasks.length}|${o.taskError ?? ''}`}
+          voiceLang={o.step === 'lang' ? null : o.lang}>
           <StepPanel o={o} L={L} />
         </OnboardingChat>
       )}
@@ -59,6 +60,8 @@ function StepPanel({ o, L }: { o: AdminOnboarding; L: ReturnType<typeof useLabel
           onSend={o.sendAbout}
           busy={o.busy}
           multiline
+          voiceLang={o.lang}
+          micLabels={{ tap: L.micTap, listening: L.micListening, working: L.thinking }}
         />
       );
     case 'confirm':
@@ -72,6 +75,8 @@ function StepPanel({ o, L }: { o: AdminOnboarding; L: ReturnType<typeof useLabel
           sendLabel={L.send}
           onSend={o.sendBudget}
           busy={o.busy}
+          voiceLang={o.lang}
+          micLabels={{ tap: L.micTap, listening: L.micListening, working: L.thinking }}
         />
       );
     case 'budgetConfirm':

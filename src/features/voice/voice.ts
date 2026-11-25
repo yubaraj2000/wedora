@@ -89,10 +89,14 @@ export function stopSpeaking() {
  * Speak a line aloud (Sarvam Bulbul) and resolve when it has finished playing, so the conversation
  * only starts listening again after Wedora stops talking (no echo). Never throws.
  */
-export async function speakAndWait(text: string, lang: Lang, weddingId: string): Promise<void> {
+export async function speakAndWait(text: string, lang: Lang, weddingId?: string | null): Promise<void> {
   if (!text.trim()) return;
   try {
-    const { audio_b64, mime } = await fn<{ audio_b64: string; mime: string }>('speak', { text, lang, wedding_id: weddingId });
+    const { audio_b64, mime } = await fn<{ audio_b64: string; mime: string }>('speak', {
+      text,
+      lang,
+      ...(weddingId ? { wedding_id: weddingId } : {}),
+    });
     if (!audio_b64) return;
     stopSpeaking();
     const p = createAudioPlayer({ uri: `data:${mime};base64,${audio_b64}` });
@@ -114,6 +118,31 @@ export async function speakAndWait(text: string, lang: Lang, weddingId: string):
   } catch (e) {
     console.warn('speak failed', (e as Error).message);
   }
+}
+
+/** Speech → text only (onboarding answers, before the wedding exists). */
+export async function transcribe(uri: string, lang: Lang | 'auto'): Promise<{ transcript: string; language: Lang }> {
+  const form = new FormData();
+  form.append('op', 'transcribe');
+  form.append('lang', lang);
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(uri)).blob();
+    form.append('file', new File([blob], 'speech.webm', { type: blob.type || 'audio/webm' }));
+  } else {
+    form.append('file', { uri, name: 'speech.m4a', type: 'audio/mp4' } as unknown as Blob);
+  }
+  const { data } = await supabase.auth.getSession();
+  const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/wedora`, {
+    method: 'POST',
+    headers: {
+      apikey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '',
+      Authorization: `Bearer ${data.session?.access_token ?? ''}`,
+    },
+    body: form,
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? `transcribe failed (${res.status})`);
+  return body;
 }
 
 /** Fire-and-forget version for one-off replies. */
