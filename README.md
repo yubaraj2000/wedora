@@ -1,56 +1,110 @@
-# Welcome to your Expo app 👋
+# Wedora 🪔
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Run your family's wedding like a team — in your own language.** Grandma speaks Odia, the uncle in Kolkata speaks Bengali, and the work still lands with the right person.
 
-## Get started
+> Built in one day at **Festive Hacks** (WeMakeDevs × WeAreDevelopers, BIEC Bengaluru, 25 Nov 2026) with **Sarvam AI**, **Flagsmith** and **NudgeBee**.
 
-1. Install dependencies
+| | |
+|---|---|
+| 🎥 Demo video | _coming before submission_ |
+| 🌐 Live web app | _coming before submission_ |
+| 📱 Android APK | _optional, if time allows_ |
 
-   ```bash
-   npm install
-   ```
+---
 
-2. Start the app
+## The problem
 
-   ```bash
-   npx expo start
-   ```
+An Indian wedding is run by 20–40 relatives at once: someone books the tent, someone pays the caterer, someone tracks the guest list. Today this lives in one noisy WhatsApp group:
 
-In the output, you'll find options to open the app in a
+- Nobody knows **who approved** a ₹12,000 payment, or whether anyone did.
+- Every message pings everyone, so the important ones get lost.
+- The elders who know the most can't type English into an app.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## What Wedora does
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- **Invite-only family org chart.** One Family Admin, six departments (Finance, Logistics, Food & Catering, Decoration, Guest Management, Events & Ceremony), heads, sub-heads and members. Every invite link carries a department, a level and who sent it. **You can only invite people below you.** The admin sees a live "Who joined" tree: who, at which level, invited by whom, and when.
+- **Tasks and expenses with real approvals.** The approver depends on the amount: up to ₹5,000 the sub-head, up to ₹25,000 the department head, above that the Finance head. The limits are live config in Flagsmith. Nobody can approve their own expense.
+- **Notifications go only to the one person who must act** — your immediate head — not the whole family.
+- **Speak instead of type** _(Layer 2, in progress)_: tap the mic and say _"Mamu paid 12,000 to the tent-wala"_ in Odia, Hindi or Bengali. Sarvam turns it into an expense routed to the right approver and replies aloud in the same language.
 
-## Get a fresh project
+_The Mohanty family story used in the demo is illustrative._
 
-When you're ready, run:
+## How each sponsor tool is used
 
-```bash
-npm run reset-project
+### Sarvam AI — the voice of the app _(in progress)_
+Speech-to-text (Saaras), tool-calling chat (`sarvam-105b`) that can only call the same permission-checked functions as the buttons, translation of tasks into each member's language, and spoken replies (Bulbul).
+**Without it:** relatives who can't type English are left out — the people the app is for.
+
+### Flagsmith — the family's rulebook
+- `approval_limits` — the ₹ limits for sub-heads and heads. Read **only on the server** (Supabase Edge Function with the server key), so no one can raise their own limit from the app. Change it in Flagsmith and the very next expense routes differently. Each expense stores the limits it was routed with.
+- `ai_voice` — the AI kill switch: off → the mic disappears and the app falls back to buttons.
+- `sarvam_model` — which Sarvam model to use, swappable without a release.
+
+**Without it:** limits are hard-coded, and turning AI off during an outage needs a new release.
+
+### NudgeBee — operating the app _(in progress)_
+An AI-outage runbook: a scheduled health check calls Wedora's `ai-health` function; if Sarvam is failing, NudgeBee asks the operator to approve, then flips `ai_voice` off in Flagsmith and records the event.
+**Without it:** a Sarvam outage means a broken mic button in front of grandma at 11 pm the night before the wedding.
+
+## How it works
+
+```
+Expo app (Android + web)
+   │  reads via Row-Level Security, writes only through checked functions
+   ▼
+Supabase: Postgres + RLS + Realtime + Edge Functions
+   ├─ SECURITY DEFINER functions: create_invite, accept_invite, create_task, decide_expense …
+   ├─ Edge Function submit-expense ──► Flagsmith (server key): approval_limits
+   └─ Edge Function voice (Layer 2) ──► Sarvam STT → sarvam-105b tools → TTS
+NudgeBee runbook ──► ai-health ──► Flagsmith ai_voice
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Security rule: **feature flags are never security.** Roles, invite levels and approvals are enforced in Postgres (RLS + functions). Flags only tune limits and switch features.
 
-### Other setup steps
+## Try it locally
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Requirements: Node 20+, a Supabase project, a Flagsmith environment, a Sarvam API key.
 
-## Learn more
+1. `git clone https://github.com/yubaraj2000/wedora && cd wedora && npm install`
+2. `cp .env.example .env` and fill in your Supabase URL, Supabase publishable key and Flagsmith client key.
+3. In the Supabase dashboard:
+   - SQL editor → run `supabase/migrations/0001_core.sql`.
+   - Authentication → Sign In / Providers → turn on **Allow anonymous sign-ins**.
+   - Edge Functions → Secrets → add `SARVAM_API_KEY` and `FLAGSMITH_SERVER_KEY`.
+4. In Flagsmith create the flags `approval_limits` (value `{"sub_head":5000,"head":25000}`), `ai_voice` (on) and `sarvam_model` (`sarvam-105b`).
+5. `npx expo start` → press `w` for web, or scan the QR code with Expo Go.
 
-To learn more about developing your project with Expo, look at the following resources:
+Never commit `.env`; only `.env.example` is tracked.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## What is built / what is not
 
-## Join the community
+_Updated as we go._
 
-Join our community of developers creating universal apps.
+- [x] Expo app connected to Supabase (anonymous device sign-in)
+- [x] Database: departments, invite-only membership, tasks, expenses with amount-based routing, notifications, RLS
+- [ ] Screens: create wedding, invites + join, tasks, expenses, approvals, admin dashboard, "Who joined" tree
+- [ ] Voice in Odia / Hindi / Bengali (Sarvam)
+- [ ] NudgeBee AI-outage runbook
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Known limits
+
+- Anonymous sign-in: if a relative clears the app's storage, they need a new invite.
+- Illustrations are AI-generated in Google Flow and carry Flow's small visible watermark.
+
+## Measured
+
+_Real timings from the demo device will go here._
+
+## AI tools used (disclosure)
+
+This project was built during the hackathon by [yubaraj2000](https://github.com/yubaraj2000) with AI assistance, as allowed by the rules:
+
+- **Claude Code** — wrote most of the code and SQL with me, set up the Supabase project and Flagsmith flags, and ran the builds. I reviewed and can explain every part.
+- **Google Flow (Nano Banana 2.1)** — generated the Pattachitra-style illustrations and app icon.
+- **Figma (via Claude Code)** — UI screen template.
+
+Before the event I only did research, sponsor account setup and the requirements notes; all code and design were made after hacking started at 11:30.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
