@@ -59,7 +59,15 @@ export function slug(s: string): string {
   return out || `custom_${Date.now().toString(36)}`;
 }
 
-export const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s.trim());
+export const isDate = (s: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s.trim())) return false;
+  // Verify calendar validity: JS Date silently rolls over (e.g. Feb 30 → Mar 2).
+  // Parsing as UTC and checking the UTC month/day catches this.
+  const d = new Date(s.trim() + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return false;
+  const [y, m, day] = s.trim().split('-').map(Number);
+  return d.getUTCFullYear() === y && d.getUTCMonth() + 1 === m && d.getUTCDate() === day;
+};
 
 export const ceremonyTitle = (c: { en: string; local: string }) =>
   c.local && c.local !== c.en ? `${c.local} · ${c.en}` : c.en;

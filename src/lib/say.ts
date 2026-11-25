@@ -18,6 +18,7 @@ export function useSay(lang: Lang | null | undefined, lines: string[]): string[]
   useEffect(() => {
     const src = joined.split('\u0001');
     if (l === 'en-IN') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOut(src);
       return;
     }

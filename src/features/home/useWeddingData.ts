@@ -58,6 +58,7 @@ export function useWeddingData(parts: Part[]) {
   }, [w, key]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

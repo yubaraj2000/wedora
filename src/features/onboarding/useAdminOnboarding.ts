@@ -148,6 +148,7 @@ export function useAdminOnboarding() {
     started.current = true;
     if (member?.role === 'admin' && !member.onboarding_done) {
       wRef.current = member.wedding_id;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLang(member.language);
       setStep('budget');
       (async () => {
@@ -164,6 +165,7 @@ export function useAdminOnboarding() {
   const suggestionsKey = suggestions.map((s) => s.key).join(',');
   useEffect(() => {
     if (step !== 'ceremonies' || fromFlag || !suggestions.length) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFromFlag(true);
     setCeremonies((cur) => [...suggestions.map((c) => ({ ...c, checked: true })), ...cur.filter((c) => c.custom)]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,7 +292,8 @@ export function useAdminOnboarding() {
         setThinking(false);
       }
     },
-    [majors, ai],
+    // All setState setters are stable; include everything the compiler infers to satisfy it.
+    [majors, ai, setThinking, setTaskError, setTasks],
   );
 
   const continueCeremonies = () =>

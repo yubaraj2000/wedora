@@ -61,6 +61,7 @@ export function canDecide(m: Member, e: Expense): boolean {
 export function routeReason(e: Expense, members: ById<Member>): string {
   const sub = e.limits_used?.sub_head;
   const head = e.limits_used?.head;
+  const hasLimits = sub != null || head != null;
   const amt = formatINR(Number(e.amount));
   const who = e.approver_id ? members[e.approver_id]?.display_name : null;
   const to = `${LEVEL_LABEL[e.approval_level] ?? e.approval_level}${who ? ` (${who})` : ''}`;
@@ -70,7 +71,7 @@ export function routeReason(e: Expense, members: ById<Member>): string {
   else if ((e.approval_level === 'finance' || e.approval_level === 'admin') && head != null)
     why = `${amt} > ${formatINR(head)} head limit`;
   else why = amt;
-  return `${why} → ${to} (limits from Flagsmith)`;
+  return `${why} → ${to}${hasLimits ? ' (limits from Flagsmith)' : ''}`;
 }
 
 export const TASK_NEXT: Record<Task['status'], Task['status']> = {

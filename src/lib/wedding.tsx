@@ -78,6 +78,7 @@ export function WeddingProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
 
@@ -130,7 +131,10 @@ export function useFlagValue<T>(name: FlagName, fallback: T): T {
  */
 export function useLive(tables: string[], weddingId: string | null, onChange: () => void, pollMs = 8000) {
   const cb = useRef(onChange);
-  cb.current = onChange;
+  // Update the ref inside an effect so it never mutates during render (React Compiler rule).
+  useEffect(() => {
+    cb.current = onChange;
+  });
   const key = tables.join(',');
   useEffect(() => {
     if (!weddingId) return;

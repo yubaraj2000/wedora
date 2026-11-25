@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Pill, Txt } from '@/components/ui';
 import { C, S } from '@/constants/theme';
 import { updateTaskStatus } from '@/lib/api';
-import type { Member, Task, TaskStatus } from '@/lib/types';
+import type { Task, TaskStatus } from '@/lib/types';
 
 import { TASK_NEXT } from './logic';
 
