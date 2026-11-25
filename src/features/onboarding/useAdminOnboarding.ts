@@ -38,6 +38,7 @@ import {
 
 const Q = {
   greet: 'Namaste. I am Wedora, your wedding operations manager. I will set up your wedding plan with you in seven short steps. Which language would you like to use?',
+  hello: 'Namaste. I am Wedora, your wedding operations manager. We will set up your wedding plan together in seven short steps.',
   greetNative: 'ଆପଣ କେଉଁ ଭାଷାରେ କଥା ହେବେ? · आप किस भाषा में बात करेंगे? · আপনি কোন ভাষায় কথা বলবেন?',
   about: 'Step 1. Please tell me the names of the bride and groom, the wedding date, the city, and your own name.',
   confirm: 'This is what I have recorded. Please check each detail and correct anything that is wrong.',
@@ -177,6 +178,9 @@ export function useAdminOnboarding() {
     push('me', LANGS.find((x) => x.code === l)?.native ?? l);
     setLang(l);
     setStep('about');
+    // Both lines are added now (in order) and spoken in the chosen language — the chip tap is the
+    // user gesture that lets the browser play audio.
+    ai(Q.hello);
     ai(Q.about);
   };
 

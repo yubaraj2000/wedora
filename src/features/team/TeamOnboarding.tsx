@@ -16,14 +16,15 @@ import {
 } from '@/lib/api';
 import type { Department, SuggestedTask, Task, WeddingEvent } from '@/lib/types';
 import { useFlag, useWedding } from '@/lib/wedding';
+import { SpeakToggle, useSpeakQueue, type SpeakLine } from '@/features/onboarding/speakQueue';
 
 import { INVITE_LINES, InviteList, type CreatedInvite } from './InviteList';
 import { emptyPerson, emptySubHead, filled, PEOPLE_LINES, PeopleForm, type PersonRow, type SubHeadRow } from './PeopleForm';
-import { useT } from './useT';
+import { useT, type T } from './useT';
 
 type Step = 'greet' | 'tasks' | 'team' | 'invites';
 type Msg = { from: 'ai' | 'me'; text: string };
-type Err = { msg: string; id: string };
+type Err = { msg: string; id: string; n: number };
 
 /** Chat-style onboarding for heads, sub-heads and members (in the member's own language). */
 export function TeamOnboarding() {
@@ -105,7 +106,7 @@ export function TeamOnboarding() {
       setTasks(tk);
       setEvents(ev);
     } catch (e) {
-      setErr({ msg: (e as Error).message, id: 'load' });
+      setErr({ msg: (e as Error).message, id: 'load', n: Date.now() });
     } finally {
       setLoading(false);
     }
@@ -126,7 +127,7 @@ export function TeamOnboarding() {
       try {
         await fn();
       } catch (e) {
-        setErr({ msg: (e as Error).message, id });
+        setErr({ msg: (e as Error).message, id, n: Date.now() });
       } finally {
         setBusy(null);
       }
@@ -229,6 +230,24 @@ export function TeamOnboarding() {
 
   const nothingToInvite = !subHeads.some(filled) && !members.some(filled) && !groupLink;
 
+  // ---------- voice: every AI line on screen is also spoken (typed or spoken answers alike) ----------
+  const showing = !!member && !!wedding && !loading;
+  const aiLines: { key: string; en: string; extra?: string }[] = [];
+  const add = (en: string) => aiLines.push({ key: en, en }); // keyed by English text: spoken once
+  if (showing) {
+    history.forEach((m) => m.from === 'ai' && add(m.text));
+    if (isMember) add(L.member);
+    else if (step === 'greet') add(isHead ? L.greetHead : L.greetSub);
+    else if (step === 'tasks') {
+      add(myTasks.length ? L.tasksHave : L.tasksNone);
+      if (aiOn && dept) add(suggested ? L.pickTasks : L.wantMore);
+    } else if (step === 'team') add(L.team);
+    else add(invites.length ? L.invites : L.noInvites);
+  }
+  if (err) aiLines.push({ key: `oops:${err.n}`, en: L.oops, extra: 'Try again' });
+  const speakLines = useTranslatedLines(t, lang, aiLines);
+  const { soundOn, toggleSound } = useSpeakQueue(speakLines, member ? lang : null, w);
+
   // ---------- render ----------
   if (!member || !wedding || loading) {
     return (
@@ -246,6 +265,9 @@ export function TeamOnboarding() {
 
   return (
     <Screen scroll edges={['bottom']} contentStyle={styles.content}>
+      <View style={styles.top}>
+        <SpeakToggle on={soundOn} onToggle={toggleSound} />
+      </View>
       {history.map((m, i) => (
         <ChatBubble key={i} from={m.from} text={translateAnswer(t, m.text)} />
       ))}
@@ -333,6 +355,35 @@ export function TeamOnboarding() {
   );
 }
 
+/**
+ * Turn English AI lines into speakable lines. A line is ready once its translation has arrived
+ * (or right away in English); if translation never comes, it is spoken as is after 3 s.
+ * Keys: history lines use their English text, so a line already spoken in the step is not repeated
+ * when it moves into the history.
+ */
+function useTranslatedLines(t: T, lang: string, rows: { key: string; en: string; extra?: string }[]): SpeakLine[] {
+  const base = rows.map((r) => {
+    const text = t(r.en);
+    const tail = r.extra ? ` ${t(r.extra)}` : '';
+    return { key: r.key, text: text + tail, ready: lang === 'en-IN' || text !== r.en };
+  });
+  const pendingKey = base
+    .filter((l) => !l.ready)
+    .map((l) => l.key)
+    .join('\u0001');
+  const [graced, setGraced] = useState('');
+  useEffect(() => {
+    if (!pendingKey) return;
+    const id = setTimeout(() => setGraced(pendingKey), 3000);
+    return () => clearTimeout(id);
+  }, [pendingKey]);
+  const gracedSet = new Set(graced.split('\u0001'));
+  const sig = base.map((l) => `${l.key}\u0002${l.text}\u0002${l.ready || gracedSet.has(l.key) ? 1 : 0}`).join('\u0001');
+  // Stable array while nothing changed, so the speak effect does not re-run on every keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => base.map((l) => ({ ...l, ready: l.ready || gracedSet.has(l.key) })), [sig]);
+}
+
 /** "me" answers may carry a count suffix ("Added tasks: 3") — translate the label part. */
 function translateAnswer(t: (en: string) => string, text: string) {
   const m = text.match(/^(.*?)(: \d+| \(\d+\))$/);
@@ -353,6 +404,7 @@ function ErrorBubble({ t, msg, onRetry }: { t: (en: string) => string; msg: stri
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  top: { alignItems: 'flex-end' },
   content: { gap: S.sm, paddingBottom: S.xxl },
   block: { alignSelf: 'stretch' },
   taskLine: { marginTop: 2 },

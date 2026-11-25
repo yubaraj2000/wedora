@@ -1,38 +1,22 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 
 import { ChatBubble, Txt } from '@/components/ui';
 import { C, R, S } from '@/constants/theme';
-import { speakAndWait, stopSpeaking } from '@/features/voice/voice';
 import type { Lang } from '@/lib/types';
 
 import { TOTAL_STEPS, type Msg } from './model';
+import { SpeakToggle, useSpeakQueue, type SpeakLine } from './speakQueue';
 
 /**
- * Speak each new AI line aloud (Sarvam Bulbul, in the chosen language), one after another.
- * Lines still being translated ("…") wait until their text arrives.
+ * AI lines to read aloud. The greeting lines before the first answer (the language question) are
+ * skipped — except on resume, where there is no answer yet and every line is new.
  */
-function useSpeakLines(msgs: Msg[], lang: Lang | null | undefined, on: boolean) {
-  const spoken = useRef(new Set<number>());
-  const queue = useRef<Promise<void>>(Promise.resolve());
-  const started = useRef(false);
-  useEffect(() => {
-    if (!lang) return;
-    if (!started.current) {
-      // Don't read out the old lines (the language question), but DO speak the newest AI question.
-      const lastAi = [...msgs].reverse().find((m) => m.from === 'ai');
-      msgs.forEach((m) => m.id !== lastAi?.id && spoken.current.add(m.id));
-      started.current = true;
-    }
-    for (const m of msgs) {
-      if (m.from !== 'ai' || spoken.current.has(m.id) || !m.text || m.text === '…') continue;
-      spoken.current.add(m.id);
-      if (!on) continue;
-      const text = m.text.split('\n(')[0]; // drop technical error details
-      queue.current = queue.current.then(() => speakAndWait(text, lang));
-    }
-  }, [msgs, lang, on]);
-  useEffect(() => () => stopSpeaking(), []);
+function speakable(msgs: Msg[]): SpeakLine[] {
+  const firstMe = msgs.findIndex((m) => m.from === 'me');
+  return msgs
+    .filter((m, i) => m.from === 'ai' && (firstMe < 0 || i > firstMe))
+    .map((m) => ({ key: String(m.id), text: m.text, ready: !!m.text && m.text !== '…' }));
 }
 
 type Props = {
@@ -50,8 +34,8 @@ type Props = {
 
 export function OnboardingChat({ stepNum, msgs, thinking, thinkingLabel, children, scrollKey, voiceLang }: Props) {
   const ref = useRef<ScrollViewInstance>(null);
-  const [soundOn, setSoundOn] = useState(true);
-  useSpeakLines(msgs, voiceLang, soundOn);
+  const lines = useMemo(() => speakable(msgs), [msgs]);
+  const { soundOn, toggleSound } = useSpeakQueue(lines, voiceLang);
   const last = msgs[msgs.length - 1];
   const lastKey = `${msgs.length}|${last?.text ?? ''}|${thinking ? 1 : 0}|${scrollKey}`;
 
@@ -70,16 +54,7 @@ export function OnboardingChat({ stepNum, msgs, thinking, thinkingLabel, childre
           {stepNum}/{TOTAL_STEPS}
         </Txt>
         {voiceLang ? (
-          <Pressable
-            accessibilityLabel={soundOn ? 'Mute Wedora' : 'Let Wedora speak'}
-            onPress={() => {
-              if (soundOn) stopSpeaking();
-              setSoundOn(!soundOn);
-            }}
-            hitSlop={12}
-          >
-            <Txt variant="h3">{soundOn ? '🔊' : '🔇'}</Txt>
-          </Pressable>
+          <SpeakToggle on={soundOn} onToggle={toggleSound} />
         ) : null}
       </View>
       <ScrollView
