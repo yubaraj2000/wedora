@@ -248,13 +248,26 @@ export function parseIndianAmount(input: string): number | null {
 // ---------- operations ----------
 let healthCache: { at: number; body: Record<string, unknown> } | null = null;
 async function health() {
-  if (healthCache && Date.now() - healthCache.at < 60_000) return json({ ...healthCache.body, cached: true });
+  if (healthCache && Date.now() - healthCache.at < 15_000) return json({ ...healthCache.body, cached: true });
   const r = await healthCheck();
   healthCache = { at: Date.now(), body: r };
   return json(r);
 }
 async function healthCheck(): Promise<Record<string, unknown>> {
   const t0 = Date.now();
+  // Outage drill (Flagsmith environment flag): report Sarvam as down so the NudgeBee runbook can be shown safely.
+  try {
+    const res = await fetch(`${FLAGSMITH}/flags/`, {
+      headers: { "X-Environment-Key": env("FLAGSMITH_SERVER_KEY") },
+      signal: AbortSignal.timeout(3000),
+    });
+    const flags = (await res.json()) as { feature: { name: string }; enabled: boolean }[];
+    if (flags.find((f) => f.feature.name === "sarvam_outage_drill")?.enabled) {
+      return { sarvam_ok: false, drill: true, ms: Date.now() - t0 };
+    }
+  } catch {
+    /* Flagsmith unreachable: fall through to the real check */
+  }
   try {
     await sarvam("/translate", { input: "hello", source_language_code: "en-IN", target_language_code: "hi-IN" });
     return { sarvam_ok: true, ms: Date.now() - t0 };
