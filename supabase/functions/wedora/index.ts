@@ -7,7 +7,7 @@
 //   POST { op: "parse_wedding", text }   → couple names, date, city from free text (sarvam-105b)
 //   POST { op: "parse_budget", text }    → rupees from "18 lakh" / "১৮ লাখ" / "୧୮ ଲକ୍ଷ"
 //   POST { op: "suggest_tasks", ... }    → starter tasks per department and ceremony (sarvam-105b)
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.119.2";
 
 const SARVAM = "https://api.sarvam.ai";
 const FLAGSMITH = "https://edge.api.flagsmith.com/api/v1";
@@ -25,11 +25,28 @@ function serviceKey(): string {
 }
 const admin = createClient(env("SUPABASE_URL"), serviceKey(), { auth: { persistSession: false } });
 
+// CORS: only our own web origins (phones and NudgeBee send no Origin header). Extra origins via ALLOWED_ORIGINS.
+// NOTE: Supabase hosted Edge Functions inject `Access-Control-Allow-Origin: *` on all responses at the
+// platform level, overriding the per-origin header set here. The withCors() guard therefore has no effect
+// in production hosting. Real access control is enforced by the JWT check in caller() — never rely on
+// CORS alone as a security boundary.
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "http://localhost:19006",
+  "https://yubaraj2000.github.io",
+  ...env("ALLOWED_ORIGINS").split(",").map((s) => s.trim()).filter(Boolean),
+]);
 const cors = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  Vary: "Origin",
 };
+function withCors(req: Request, res: Response) {
+  const origin = req.headers.get("Origin");
+  if (origin && ALLOWED_ORIGINS.has(origin)) res.headers.set("Access-Control-Allow-Origin", origin);
+  return res;
+}
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
@@ -38,6 +55,17 @@ class HttpError extends Error {
     super(message);
   }
 }
+
+// ---------- AI quota (per user, stored in Postgres so it survives restarts and scaling) ----------
+async function takeQuota(userId: string, op: string, cost = 1) {
+  const { data, error } = await admin.rpc("ai_take", { p_user: userId, p_op: op, p_cost: cost });
+  if (error) {
+    console.error("quota check failed", error.message);
+    throw new HttpError(503, "Please try again in a moment.");
+  }
+  if (data !== true) throw new HttpError(429, "You've used Wedora's AI a lot just now. Please wait a little, or use the buttons.");
+}
+const clip = (v: unknown, max: number) => String(v ?? "").slice(0, max);
 
 // ---------- auth: who is calling, and what is their real role? ----------
 type Member = { id: string; wedding_id: string; role: string; language: string; department_id: string | null; display_name: string };
@@ -50,7 +78,9 @@ async function caller(req: Request) {
   return data.user;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function memberOf(userId: string, weddingId: string): Promise<Member> {
+  if (!UUID.test(weddingId)) throw new HttpError(400, "wedding_id required");
   const { data, error } = await admin
     .from("members")
     .select("id, wedding_id, role, language, department_id, display_name")
@@ -138,12 +168,16 @@ async function sarvam(path: string, body: unknown) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
-  if (!res.ok) throw new HttpError(502, `sarvam ${path} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    console.error(`sarvam ${path} ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    throw new HttpError(502, "The AI service is busy right now. Please try again, or use the buttons.");
+  }
   return res.json();
 }
 
 async function translate(texts: string[], lang: string): Promise<string[]> {
-  if (lang === "en-IN") return texts;
+  // Only translate into languages Sarvam supports; fall back to English for anything else.
+  if (lang === "en-IN" || !LANG_NAME[lang]) return texts;
   return Promise.all(
     texts.map(async (t) => {
       if (!t.trim()) return t;
@@ -175,10 +209,15 @@ const DIGITS: Record<string, string> = {};
 ["०१२३४५६७८९", "০১২৩৪৫৬৭৮৯", "୦୧୨୩୪୫୬୭୮୯"].forEach((set) => [...set].forEach((ch, i) => (DIGITS[ch] = String(i))));
 
 export function parseIndianAmount(input: string): number | null {
+  // Reject inputs that start with a minus sign — negative amounts are invalid.
+  if (/^\s*-/.test(input)) return null;
   let s = [...input].map((ch) => DIGITS[ch] ?? ch).join("").toLowerCase().replace(/(\d),(?=\d)/g, "$1").replace(/₹/g, " ");
   s = s.replace(/rs\.?|rupees?|रुपये|रुपए|টাকা|ଟଙ୍କା/g, " ");
   const units: [RegExp, number][] = [
-    [/(crore|cr|करोड़|करोड|কোটি|କୋଟି)/, 1e7],
+    // "cr" and "crore" use word boundaries (\b) so they don't match substrings inside ASCII words
+    // like "script", "credit" or "cricketer". Non-ASCII crore words (करोड़, কোটি, କୋଟି) are matched
+    // with a space-or-end anchor because \b doesn't work reliably for non-ASCII in JS.
+    [/(\bcrore\b|\bcr\b|(?<=\s|^)करोड़(?=\s|$)|(?<=\s|^)करोड(?=\s|$)|(?<=\s|^)কোটি(?=\s|$)|(?<=\s|^)କୋଟି(?=\s|$))/, 1e7],
     [/(lakh|lac|lakhs|लाख|লাখ|লক্ষ|ଲକ୍ଷ)/, 1e5],
     [/(thousand|hazaar|hazar|k\b|हज़ार|हजार|হাজার|ହଜାର)/, 1e3],
   ];
@@ -197,13 +236,20 @@ export function parseIndianAmount(input: string): number | null {
 }
 
 // ---------- operations ----------
+let healthCache: { at: number; body: Record<string, unknown> } | null = null;
 async function health() {
+  if (healthCache && Date.now() - healthCache.at < 60_000) return json({ ...healthCache.body, cached: true });
+  const r = await healthCheck();
+  healthCache = { at: Date.now(), body: r };
+  return json(r);
+}
+async function healthCheck(): Promise<Record<string, unknown>> {
   const t0 = Date.now();
   try {
     await sarvam("/translate", { input: "hello", source_language_code: "en-IN", target_language_code: "hi-IN" });
-    return json({ sarvam_ok: true, ms: Date.now() - t0 });
-  } catch (e) {
-    return json({ sarvam_ok: false, ms: Date.now() - t0, error: (e as Error).message.slice(0, 200) });
+    return { sarvam_ok: true, ms: Date.now() - t0 };
+  } catch {
+    return { sarvam_ok: false, ms: Date.now() - t0 };
   }
 }
 
@@ -237,13 +283,17 @@ async function submitExpense(req: Request, body: Record<string, unknown>) {
   return json({ expense: data, limits: { sub_head: sub, head }, flags_source: source });
 }
 
-async function parseWedding(body: Record<string, unknown>) {
+async function parseWedding(userId: string, body: Record<string, unknown>) {
+  if (!clip(body.text, 1000).trim()) throw new HttpError(400, "Please tell me about the wedding first.");
+  const text = clip(body.text, 1000);
+  if (!text.trim()) return json({ bride: "", groom: "", date: "", city: "", admin_name: "" });
+  await takeQuota(userId, "parse_wedding");
   const today = new Date().toISOString().slice(0, 10);
   const out = await chatJSON<{ bride: string; groom: string; date: string; city: string; admin_name: string }>(
     `You extract wedding details from what an Indian family member says (any language: Odia, Hindi, Bengali, English, or mixed). Today is ${today}. ` +
       `Return names in their original spelling but written in English letters. date = YYYY-MM-DD of the main wedding day (assume the next upcoming one if no year), or "" if unknown. ` +
       `city = city/town or "". admin_name = the speaker's own name if they said it, else "". Never invent values: use "" when not said.`,
-    String(body.text ?? ""),
+    text,
     {
       type: "object",
       additionalProperties: false,
@@ -261,11 +311,14 @@ async function parseWedding(body: Record<string, unknown>) {
   return json(out);
 }
 
-async function parseBudget(body: Record<string, unknown>) {
-  const text = String(body.text ?? "");
+async function parseBudget(userId: string, body: Record<string, unknown>) {
+  const text = clip(body.text, 200);
+  if (!text.trim()) throw new HttpError(400, "Please type the budget, for example 18 lakh.");
+  if (!text.trim()) return json({ budget: null, via: "parser" });
   let budget = parseIndianAmount(text);
   let via = "parser";
   if (!budget) {
+    await takeQuota(userId, "parse_budget");
     const out = await chatJSON<{ rupees: number }>(
       "Convert the spoken budget for an Indian wedding into whole rupees. 1 lakh = 100000, 1 crore = 10000000. Return 0 if no amount is given.",
       text,
@@ -282,9 +335,10 @@ async function suggestTasks(req: Request, body: Record<string, unknown>) {
   const m = await memberOf(user.id, String(body.wedding_id));
   const { flags } = await flagsFor(m);
   if (!flags.ai_voice.enabled || !flags.ai_task_planner.enabled) throw new HttpError(403, "AI task planner is off for your level");
+  await takeQuota(user.id, "suggest_tasks", 5);
 
-  const events = (body.events ?? []) as { key: string; en: string }[];
-  const departments = (body.departments ?? []) as { id: string; name: string }[];
+  const events = ((body.events ?? []) as { key: string; en: string }[]).slice(0, 20).map((e) => ({ key: clip(e.key, 60), en: clip(e.en, 80) }));
+  const departments = ((body.departments ?? []) as { id: string; name: string }[]).slice(0, 20).map((d) => ({ id: clip(d.id, 40), name: clip(d.name, 60) }));
   const lang = String(body.lang ?? m.language);
   const out = await chatJSON<{ tasks: { department: string; title: string; event_key: string }[] }>(
     "You plan an Indian family wedding. For each department give 2-3 short, concrete starter tasks (max 8 words each, English, imperative), " +
@@ -336,6 +390,8 @@ async function voice(req: Request) {
 
   const file = form.get("file");
   if (!(file instanceof File) || file.size < 1500) throw new HttpError(400, "no speech heard");
+  if (file.size > 2_000_000) throw new HttpError(413, "That recording is too long. Please keep it under 15 seconds.");
+  await takeQuota(user.id, "voice", 3);
   const t0 = Date.now();
 
   // 1) speech → text (Sarvam Saaras, language auto-detected)
@@ -352,7 +408,10 @@ async function voice(req: Request) {
     body: stt,
     signal: AbortSignal.timeout(30000),
   });
-  if (!sttRes.ok) throw new HttpError(502, `speech-to-text ${sttRes.status}: ${(await sttRes.text()).slice(0, 200)}`);
+  if (!sttRes.ok) {
+    console.error(`speech-to-text ${sttRes.status}: ${(await sttRes.text()).slice(0, 300)}`);
+    throw new HttpError(502, "I couldn't hear that clearly. Please try again, or use the buttons.");
+  }
   const sttBody = await sttRes.json();
   const transcript: string = (sttBody.transcript ?? "").trim();
   let lang: string = sttBody.language_code ?? m.language;
@@ -424,8 +483,11 @@ async function voice(req: Request) {
   });
 }
 
-async function speak(body: Record<string, unknown>) {
-  const text = String(body.text ?? "").slice(0, 1200);
+async function speak(req: Request, body: Record<string, unknown>) {
+  const user = await caller(req);
+  await memberOf(user.id, String(body.wedding_id));
+  await takeQuota(user.id, "speak");
+  const text = clip(body.text, 1200);
   const lang = LANG_NAME[String(body.lang)] ? String(body.lang) : "hi-IN";
   if (!text.trim()) throw new HttpError(400, "nothing to say");
   const r = await sarvam("/text-to-speech", { text, target_language_code: lang, model: "bulbul:v4-flash" });
@@ -434,6 +496,10 @@ async function speak(body: Record<string, unknown>) {
 
 // ---------- router ----------
 Deno.serve(async (req) => {
+  return withCors(req, await route(req));
+});
+
+async function route(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
   try {
@@ -443,6 +509,7 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as Record<string, unknown>;
     switch (body.op) {
       case "features": {
+        if (!body.wedding_id) throw new HttpError(400, "wedding_id required");
         const user = await caller(req);
         const m = await memberOf(user.id, String(body.wedding_id));
         const { flags, source } = await flagsFor(m);
@@ -451,27 +518,26 @@ Deno.serve(async (req) => {
       case "submit_expense":
         return await submitExpense(req, body);
       case "say": {
-        await caller(req);
-        const texts = (body.texts ?? []) as string[];
-        return json({ texts: await translate(texts.slice(0, 30), String(body.lang ?? "en-IN")) });
+        const user = await caller(req);
+        const lang = LANG_NAME[String(body.lang)] ? String(body.lang) : "en-IN";
+        const texts = ((body.texts ?? []) as unknown[]).slice(0, 30).map((t) => clip(t, 400));
+        if (lang !== "en-IN") await takeQuota(user.id, "say", Math.max(1, texts.filter((t) => t.trim()).length));
+        return json({ texts: await translate(texts, lang) });
       }
       case "parse_wedding":
-        await caller(req);
-        return await parseWedding(body);
+        return await parseWedding((await caller(req)).id, body);
       case "parse_budget":
-        await caller(req);
-        return await parseBudget(body);
+        return await parseBudget((await caller(req)).id, body);
       case "suggest_tasks":
         return await suggestTasks(req, body);
       case "speak":
-        await caller(req);
-        return await speak(body);
+        return await speak(req, body);
       default:
         throw new HttpError(400, `unknown op ${String(body.op)}`);
     }
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
     console.error(e);
-    return json({ error: (e as Error).message }, status);
+    return json({ error: e instanceof HttpError ? e.message : "Something went wrong. Please try again." }, status);
   }
-});
+}
