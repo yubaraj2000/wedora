@@ -175,7 +175,7 @@ const DIGITS: Record<string, string> = {};
 ["०१२३४५६७८९", "০১২৩৪৫৬৭৮৯", "୦୧୨୩୪୫୬୭୮୯"].forEach((set) => [...set].forEach((ch, i) => (DIGITS[ch] = String(i))));
 
 export function parseIndianAmount(input: string): number | null {
-  let s = [...input].map((ch) => DIGITS[ch] ?? ch).join("").toLowerCase().replace(/[,₹]/g, " ");
+  let s = [...input].map((ch) => DIGITS[ch] ?? ch).join("").toLowerCase().replace(/(\d),(?=\d)/g, "$1").replace(/₹/g, " ");
   s = s.replace(/rs\.?|rupees?|रुपये|रुपए|টাকা|ଟଙ୍କା/g, " ");
   const units: [RegExp, number][] = [
     [/(crore|cr|करोड़|करोड|কোটি|କୋଟି)/, 1e7],
@@ -322,6 +322,116 @@ async function suggestTasks(req: Request, body: Record<string, unknown>) {
   return json({ tasks: tasks.map((t, i) => ({ ...t, local: local[i] })) });
 }
 
+// ---------- voice: speech → understood action (confirmed in the app) ----------
+const LANG_NAME: Record<string, string> = { "od-IN": "Odia", "hi-IN": "Hindi", "bn-IN": "Bengali", "en-IN": "English" };
+
+async function voice(req: Request) {
+  const user = await caller(req);
+  const form = await req.formData();
+  const weddingId = String(form.get("wedding_id") ?? "");
+  const m = await memberOf(user.id, weddingId);
+  const { flags } = await flagsFor(m);
+  if (!flags.ai_voice.enabled) throw new HttpError(403, "AI voice is switched off right now — please use the buttons");
+  if (!flags.voice_expense.enabled) throw new HttpError(403, "voice is not switched on for your level yet");
+
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size < 1500) throw new HttpError(400, "no speech heard");
+  const t0 = Date.now();
+
+  // 1) speech → text (Sarvam Saaras, language auto-detected)
+  const stt = new FormData();
+  stt.append("file", file, file.name || "speech.m4a");
+  stt.append("model", "saaras:v4");
+  stt.append("mode", "transcribe");
+  // Language hint: the member's chosen language (Odia can be mistaken for Hindi/Marathi), "auto" → detect.
+  const hint = String(form.get("lang") ?? m.language);
+  stt.append("language_code", LANG_NAME[hint] && hint !== "en-IN" ? hint : "unknown");
+  const sttRes = await fetch(`${SARVAM}/speech-to-text`, {
+    method: "POST",
+    headers: { "api-subscription-key": env("SARVAM_API_KEY") },
+    body: stt,
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!sttRes.ok) throw new HttpError(502, `speech-to-text ${sttRes.status}: ${(await sttRes.text()).slice(0, 200)}`);
+  const sttBody = await sttRes.json();
+  const transcript: string = (sttBody.transcript ?? "").trim();
+  let lang: string = sttBody.language_code ?? m.language;
+  if (!LANG_NAME[lang]) lang = m.language;
+  const tStt = Date.now() - t0;
+  if (!transcript) return json({ transcript: "", language: lang, action: { intent: "none" }, reply: await translate(["I didn't hear anything. Please try again."], lang).then((x) => x[0]), ms: { stt: tStt } });
+
+  // 2) understand (sarvam-105b, strict JSON). Amounts are cross-checked by our own parser.
+  const { data: depts } = await admin.from("departments").select("id, name, parent_id").eq("wedding_id", m.wedding_id);
+  const myDept = (depts ?? []).find((d) => d.id === m.department_id)?.name ?? "";
+  const out = await chatJSON<{
+    intent: "expense" | "task" | "none";
+    amount_rupees: number;
+    description: string;
+    paid_to: string;
+    task_title: string;
+    department: string;
+    reply_en: string;
+  }>(
+    `You help an Indian family run a wedding. The speaker is ${m.display_name} (${m.role}${myDept ? ", " + myDept : ""}). ` +
+      `They spoke ${LANG_NAME[lang] ?? "an Indian language"} (it may be Odia — never confuse Odia with Marathi). ` +
+      `Decide ONE intent: "expense" if they report money paid or to be paid (amount_rupees = whole rupees: 1 lakh = 100000, hazaar/हज़ार/হাজার/ହଜାର = 1000), ` +
+      `"task" if they ask for work to be done, else "none" (greetings, noise, questions). ` +
+      `description/task_title: short English (max 8 words). paid_to: who received the money, in English letters, or "". ` +
+      `department: one of [${(depts ?? []).map((d) => d.name).join(", ")}] or "" — default to the speaker's own department. ` +
+      `reply_en: one short friendly English sentence confirming what you understood and asking them to confirm (or asking them to repeat if "none"). Never invent amounts or names.`,
+    transcript,
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["intent", "amount_rupees", "description", "paid_to", "task_title", "department", "reply_en"],
+      properties: {
+        intent: { type: "string", enum: ["expense", "task", "none"] },
+        amount_rupees: { type: "integer" },
+        description: { type: "string" },
+        paid_to: { type: "string" },
+        task_title: { type: "string" },
+        department: { type: "string" },
+        reply_en: { type: "string" },
+      },
+    },
+    String(flags.sarvam_model.value ?? "sarvam-105b"),
+  );
+  const tLlm = Date.now() - t0 - tStt;
+
+  const parsed = parseIndianAmount(transcript);
+  const amount = parsed ?? (out.amount_rupees > 0 ? out.amount_rupees : 0);
+  const dept =
+    (depts ?? []).find((d) => d.name.toLowerCase() === out.department.toLowerCase()) ??
+    (depts ?? []).find((d) => d.id === m.department_id) ??
+    null;
+  let intent = out.intent;
+  if (intent === "expense" && amount <= 0) intent = "none";
+  if (intent === "task" && !out.task_title.trim()) intent = "none";
+
+  const reply = (await translate([out.reply_en], lang))[0];
+  return json({
+    transcript,
+    language: lang,
+    action:
+      intent === "expense"
+        ? { intent, amount, description: out.description, paid_to: out.paid_to, amount_source: parsed ? "parser" : "ai" }
+        : intent === "task"
+          ? { intent, title: out.task_title, department_id: dept?.id ?? null, department: dept?.name ?? "" }
+          : { intent: "none" },
+    reply,
+    reply_en: out.reply_en,
+    ms: { stt: tStt, llm: tLlm, total: Date.now() - t0 },
+  });
+}
+
+async function speak(body: Record<string, unknown>) {
+  const text = String(body.text ?? "").slice(0, 1200);
+  const lang = LANG_NAME[String(body.lang)] ? String(body.lang) : "hi-IN";
+  if (!text.trim()) throw new HttpError(400, "nothing to say");
+  const r = await sarvam("/text-to-speech", { text, target_language_code: lang, model: "bulbul:v4-flash" });
+  return json({ audio_b64: r.audios?.[0] ?? "", mime: "audio/wav" });
+}
+
 // ---------- router ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -329,6 +439,7 @@ Deno.serve(async (req) => {
   try {
     if (req.method === "GET" && url.searchParams.get("op") === "health") return await health();
     if (req.method !== "POST") throw new HttpError(405, "POST only");
+    if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) return await voice(req);
     const body = (await req.json()) as Record<string, unknown>;
     switch (body.op) {
       case "features": {
@@ -352,6 +463,9 @@ Deno.serve(async (req) => {
         return await parseBudget(body);
       case "suggest_tasks":
         return await suggestTasks(req, body);
+      case "speak":
+        await caller(req);
+        return await speak(body);
       default:
         throw new HttpError(400, `unknown op ${String(body.op)}`);
     }
