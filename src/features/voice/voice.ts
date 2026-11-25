@@ -1,4 +1,5 @@
 import { createAudioPlayer, IOSOutputFormat, AudioQuality, type RecordingOptions } from 'expo-audio';
+import { File as FSFile } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { fn } from '@/lib/api';
@@ -38,6 +39,20 @@ export type VoiceResult = {
   ms?: { stt?: number; llm?: number; total?: number };
 };
 
+/**
+ * Attach a recording to a multipart form.
+ * Web: fetch the blob. Phones: Expo's fetch (SDK 58) rejects React Native's old {uri, name, type} parts
+ * ("Unsupported FormDataPart implementation"), so pass expo-file-system's File, which implements Blob.
+ */
+async function appendRecording(form: FormData, uri: string) {
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(uri)).blob();
+    form.append('file', new File([blob], 'speech.webm', { type: blob.type || 'audio/webm' }));
+  } else {
+    form.append('file', new FSFile(uri) as unknown as Blob, 'speech.m4a');
+  }
+}
+
 /** Send a recording to the wedora function: Sarvam speech-to-text → sarvam-105b → proposed action. */
 export async function understand(
   uri: string,
@@ -50,13 +65,7 @@ export async function understand(
   form.append('lang', lang);
   if (convo.pending) form.append('pending', JSON.stringify(convo.pending));
   if (convo.history?.length) form.append('history', JSON.stringify(convo.history.slice(-6)));
-  if (Platform.OS === 'web') {
-    const blob = await (await fetch(uri)).blob();
-    form.append('file', new File([blob], 'speech.webm', { type: blob.type || 'audio/webm' }));
-  } else {
-    // React Native FormData file part
-    form.append('file', { uri, name: 'speech.m4a', type: 'audio/mp4' } as unknown as Blob);
-  }
+  await appendRecording(form, uri);
   const { data } = await supabase.auth.getSession();
   const url = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/wedora`;
   const res = await fetch(url, {
@@ -125,12 +134,7 @@ export async function transcribe(uri: string, lang: Lang | 'auto'): Promise<{ tr
   const form = new FormData();
   form.append('op', 'transcribe');
   form.append('lang', lang);
-  if (Platform.OS === 'web') {
-    const blob = await (await fetch(uri)).blob();
-    form.append('file', new File([blob], 'speech.webm', { type: blob.type || 'audio/webm' }));
-  } else {
-    form.append('file', { uri, name: 'speech.m4a', type: 'audio/mp4' } as unknown as Blob);
-  }
+  await appendRecording(form, uri);
   const { data } = await supabase.auth.getSession();
   const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/wedora`, {
     method: 'POST',
