@@ -8,7 +8,7 @@
 |---|---|
 | 🎥 Demo video | _coming before submission_ |
 | 🌐 Live web app | **https://yubaraj2000.github.io/wedora/** (opens in any browser; no install) |
-| 📱 Android APK | _optional, if time allows_ |
+| 📱 Android APK | Release APK (arm64, sideload): see the latest [GitHub release](https://github.com/yubaraj2000/wedora/releases) |
 
 ---
 
@@ -22,29 +22,46 @@ An Indian wedding is run by 20–40 relatives at once: someone books the tent, s
 
 ## What Wedora does
 
-- **Invite-only family org chart.** One Family Admin, six departments (Finance, Logistics, Food & Catering, Decoration, Guest Management, Events & Ceremony), heads, sub-heads and members. Every invite link carries a department, a level and who sent it. **You can only invite people below you.** The admin sees a live "Who joined" tree: who, at which level, invited by whom, and when.
-- **Tasks and expenses with real approvals.** The approver depends on the amount: up to ₹5,000 the sub-head, up to ₹25,000 the department head, above that the Finance head. The limits are live config in Flagsmith. Nobody can approve their own expense.
+- **AI-guided setup in your language.** The Family Admin picks ଓଡ଼ିଆ / हिन्दी / বাংলা / English and Wedora — a calm wedding operations manager — **speaks each question aloud** and **takes spoken answers**: who is marrying, when and where, the budget ("୧୮ ଲକ୍ଷ" → ₹18,00,000), which ceremonies (suggested per tradition), starter tasks per department, and who heads each department (from phone contacts or typed). Every AI result is shown for confirmation before it is saved.
+- **Invite-only family org chart.** One Family Admin, six departments (Finance, Logistics, Food & Catering, Decoration, Guest Management, Events & Ceremony), heads, sub-heads and members. Each WhatsApp invite link carries a department, a level and who sent it. **You can only invite people below you.** Heads get their own short onboarding, only about their department. The admin sees a live "Who joined" tree: who, at which level, invited by whom, and when.
+- **Tasks and expenses with real approvals.** The approver depends on the amount: up to ₹5,000 the sub-head, up to ₹25,000 the department head, above that the Finance head. The limits are live config in Flagsmith, and every approval card says *why* it came to you ("₹12,000 > ₹5,000 sub-head limit → Head (Mamu), limits from Flagsmith"). Nobody can approve their own expense.
+- **Talk with Wedora (hands-free).** Tap once and talk: *"Mamu tent wala ku baara hajaar deleni"* → "₹12,000 paid to the tent vendor. Shall I record it?" → *"ହଁ"* → "Recorded. Sent to Mamu (Head) for approval, as it is above ₹5,000." It stops listening when you pause, answers aloud, and listens again. It can also mark tasks done (with Undo) and answer "how much has Decoration spent?" from the database. **Money is always confirm-first.**
 - **Notifications go only to the one person who must act** — your immediate head — not the whole family.
-- **Speak instead of type** _(Layer 2, in progress)_: tap the mic and say _"Mamu paid 12,000 to the tent-wala"_ in Odia, Hindi or Bengali. Sarvam turns it into an expense routed to the right approver and replies aloud in the same language.
 
 _The Mohanty family story used in the demo is illustrative._
 
 ## How each sponsor tool is used
 
-### Sarvam AI — the voice of the app _(in progress)_
-Speech-to-text (Saaras), tool-calling chat (`sarvam-105b`) that can only call the same permission-checked functions as the buttons, translation of tasks into each member's language, and spoken replies (Bulbul).
+### Sarvam AI — the voice of the app
+| Sarvam API | Where in Wedora |
+|---|---|
+| Speech-to-text `saaras:v4` (language hint per member; Odia never mistaken for Marathi) | onboarding answers, voice commands, hands-free conversation |
+| Chat `sarvam-105b` with strict JSON schemas | understanding wedding details, budgets, voice intents (expense / task / task status / status question / yes / no / stop), starter-task planning per ceremony |
+| Translate | every AI line and UI label in the member's language |
+| Text-to-speech Bulbul v4 (calm personas: `neha_en_customer`, `ritu_hi_customer`, `arnab_bn_conversation`; Odia via any v4 persona) | Wedora speaks every onboarding question and every reply |
+
+The Sarvam key lives only in a Supabase Edge Function; the model only **proposes** actions — writes go through the same permission-checked database functions as the buttons, and rupee amounts are parsed by our own code ("12,000", "୧୮ ଲକ୍ଷ", "১২ হাজার").
 **Without it:** relatives who can't type English are left out — the people the app is for.
 
-### Flagsmith — the family's rulebook
-- `approval_limits` — the ₹ limits for sub-heads and heads. Read **only on the server** (Supabase Edge Function with the server key), so no one can raise their own limit from the app. Change it in Flagsmith and the very next expense routes differently. Each expense stores the limits it was routed with.
-- `ai_voice` — the AI kill switch: off → the mic disappears and the app falls back to buttons.
-- `sarvam_model` — which Sarvam model to use, swappable without a release.
+### Flagsmith — the family's rulebook (per level, per language)
+Every member is identified to Flagsmith **by the server, with traits read from the database** (`role`, `is_finance_head`, `language`), so nobody can fake their level.
 
-**Without it:** limits are hard-coded, and turning AI off during an outage needs a new release.
+| Flag | What it controls |
+|---|---|
+| `approval_limits` | ₹ limits for sub-heads/heads; read only on the server; each expense stores the limits it was routed with |
+| `voice_expense` (segments per level) | who gets the voice assistant — on for admin/heads/sub-heads, **off for members until switched on live** (the server enforces it too) |
+| `budget_dashboard`, `invite_people`, `ai_task_planner` (segments per level) | the hierarchy's powers: dashboard for admin + Finance head, invites for leaders, AI planning for admin + heads |
+| `ceremony_suggestions` (segments per language) | Odia, Bengali and Hindi ceremony lists in their own scripts, editable in Flagsmith without a release |
+| `ai_voice` | kill switch for all AI voice — NudgeBee flips it during an outage |
+| `sarvam_model` | which Sarvam model to use |
+| `sarvam_outage_drill` | makes the health check report Sarvam as down, to rehearse the NudgeBee runbook safely |
 
-### NudgeBee — operating the app _(in progress)_
-An AI-outage runbook: a scheduled health check calls Wedora's `ai-health` function; if Sarvam is failing, NudgeBee asks the operator to approve, then flips `ai_voice` off in Flagsmith and records the event.
-**Without it:** a Sarvam outage means a broken mic button in front of grandma at 11 pm the night before the wedding.
+A **Live settings** card on Home shows the current flags; changes appear within ~10 s.
+**Without it:** limits and powers would be hard-coded, and turning AI off during an outage would need a new release.
+
+### NudgeBee — operating the app
+**Automation `wedora-ai-outage-runbook`** (built with NudgeBee's nubi AI, then reviewed): every minute an HTTP task checks `…/functions/v1/wedora?op=health`; if `sarvam_ok` is false it raises an **in-app approval** for the operator; on approval it calls the Flagsmith API (admin key stored as a NudgeBee *secret* config) to switch `ai_voice` **off**, and stores a **HIGH** event. Families immediately get buttons instead of a broken mic.
+**Without it:** a Sarvam outage means a broken mic in front of grandma at 11 pm the night before the wedding, and nobody on call notices.
 
 ## How it works
 
@@ -78,13 +95,17 @@ Never commit `.env`; only `.env.example` is tracked.
 
 ## What is built / what is not
 
-_Updated as we go._
-
-- [x] Expo app connected to Supabase (anonymous device sign-in)
-- [x] Database: departments, invite-only membership, tasks, expenses with amount-based routing, notifications, RLS
-- [ ] Screens: create wedding, invites + join, tasks, expenses, approvals, admin dashboard, "Who joined" tree
-- [ ] Voice in Odia / Hindi / Bengali (Sarvam)
-- [ ] NudgeBee AI-outage runbook
+- [x] AI-guided admin onboarding by voice in Odia / Hindi / Bengali / English (spoken questions, spoken answers, confirm cards)
+- [x] Invite-only joining with per-level invite rules, WhatsApp links, contact picker (Android), head/sub-head onboarding
+- [x] Tasks, expenses routed by Flagsmith limits, approvals, admin dashboard, "Who joined" tree, notifications
+- [x] Hands-free voice conversation with voice confirm, task status + Undo, spend questions
+- [x] Flagsmith per-level and per-language flags, evaluated on the server
+- [x] NudgeBee AI-outage runbook with human approval
+- [x] Security audit fixes: RLS everywhere, write access only through checked functions, per-user AI quotas, CORS allowlist, secure session storage on phones, privacy notice, leave-wedding
+- [x] Live web app (GitHub Pages) and Android release APK
+- [ ] True streaming voice (Sarvam live speech-to-text over a WebSocket relay) — needs a development build; next step
+- [ ] `onboarding_mode = classic_form` fallback (flag exists; the plain-form onboarding is not built yet)
+- [ ] Head onboarding is text-first (spoken questions only in admin onboarding)
 
 ## Privacy and safety
 
@@ -102,7 +123,15 @@ _Updated as we go._
 
 ## Measured
 
-_Real timings from the demo device will go here._
+Server timings from the deployed Edge Function (Sarvam, Mumbai/Tokyo regions, venue Wi-Fi):
+
+| Step | Time |
+|---|---|
+| Odia speech → text (onboarding answer) | 0.3 s |
+| Voice turn: speech-to-text + understanding (expense / yes / status / task done) | 1.0 – 2.1 s server time |
+| Flagsmith flag change → app | about 10 s (polling) |
+| Outage drill on → health check reports down | about 2 s |
+| Release APK build (arm64) | about 3 min |
 
 ## AI tools used (disclosure)
 
@@ -111,6 +140,8 @@ This project was built during the hackathon by [yubaraj2000](https://github.com/
 - **Claude Code** — wrote most of the code and SQL with me, set up the Supabase project and Flagsmith flags, and ran the builds. I reviewed and can explain every part.
 - **Google Flow (Nano Banana 2.1)** — generated the Pattachitra-style illustrations and app icon.
 - **Figma (via Claude Code)** — UI screen template.
+- **NudgeBee nubi** — generated the runbook from a plain-English description, which we reviewed before building.
+- **Parallel AI subagents** built independent screens from a shared typed API; every change was type-checked, linted and tested (119 unit tests) before commit. Voice code was written fresh from lessons learned earlier, not copied from earlier projects.
 
 Before the event I only did research, sponsor account setup and the requirements notes; all code and design were made after hacking started at 11:30.
 
