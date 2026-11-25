@@ -20,7 +20,14 @@ export const VOICE_RECORDING: RecordingOptions = {
 export type VoiceAction =
   | { intent: 'expense'; amount: number; description: string; paid_to: string; amount_source: 'parser' | 'ai' }
   | { intent: 'task'; title: string; department_id: string | null; department: string }
+  | { intent: 'task_status'; task_id: string; title: string; from: string; status: 'pending' | 'in_progress' | 'completed' | 'blocked' }
+  | { intent: 'ask_status' }
+  | { intent: 'confirm' }
+  | { intent: 'cancel' }
+  | { intent: 'stop' }
   | { intent: 'none' };
+
+export type Turn = { role: 'me' | 'ai'; text: string };
 
 export type VoiceResult = {
   transcript: string;
@@ -32,10 +39,17 @@ export type VoiceResult = {
 };
 
 /** Send a recording to the wedora function: Sarvam speech-to-text → sarvam-105b → proposed action. */
-export async function understand(uri: string, weddingId: string, lang: Lang | 'auto'): Promise<VoiceResult> {
+export async function understand(
+  uri: string,
+  weddingId: string,
+  lang: Lang | 'auto',
+  convo: { pending?: VoiceAction | null; history?: Turn[] } = {},
+): Promise<VoiceResult> {
   const form = new FormData();
   form.append('wedding_id', weddingId);
   form.append('lang', lang);
+  if (convo.pending) form.append('pending', JSON.stringify(convo.pending));
+  if (convo.history?.length) form.append('history', JSON.stringify(convo.history.slice(-6)));
   if (Platform.OS === 'web') {
     const blob = await (await fetch(uri)).blob();
     form.append('file', new File([blob], 'speech.webm', { type: blob.type || 'audio/webm' }));
@@ -60,15 +74,54 @@ export async function understand(uri: string, weddingId: string, lang: Lang | 'a
 
 let player: ReturnType<typeof createAudioPlayer> | null = null;
 
-/** Speak a line aloud in the given language (Sarvam Bulbul). Fire-and-forget. */
-export async function speakAloud(text: string, lang: Lang, weddingId: string) {
+/** Stop anything Wedora is saying right now. */
+export function stopSpeaking() {
+  try {
+    player?.pause();
+    player?.remove();
+  } catch {
+    /* already gone */
+  }
+  player = null;
+}
+
+/**
+ * Speak a line aloud (Sarvam Bulbul) and resolve when it has finished playing, so the conversation
+ * only starts listening again after Wedora stops talking (no echo). Never throws.
+ */
+export async function speakAndWait(text: string, lang: Lang, weddingId: string): Promise<void> {
+  if (!text.trim()) return;
   try {
     const { audio_b64, mime } = await fn<{ audio_b64: string; mime: string }>('speak', { text, lang, wedding_id: weddingId });
     if (!audio_b64) return;
-    player?.remove();
-    player = createAudioPlayer({ uri: `data:${mime};base64,${audio_b64}` });
-    player.play();
+    stopSpeaking();
+    const p = createAudioPlayer({ uri: `data:${mime};base64,${audio_b64}` });
+    player = p;
+    await new Promise<void>((resolve) => {
+      // WAV size → seconds (16-bit mono); cap the wait in case the finish event never comes.
+      const approxSec = (audio_b64.length * 0.75) / 2 / 22050;
+      const fallback = setTimeout(done, Math.min(20, approxSec + 2) * 1000);
+      const sub = p.addListener('playbackStatusUpdate', (s) => {
+        if (s.didJustFinish) done();
+      });
+      function done() {
+        clearTimeout(fallback);
+        sub.remove();
+        resolve();
+      }
+      p.play();
+    });
   } catch (e) {
     console.warn('speak failed', (e as Error).message);
   }
+}
+
+/** Fire-and-forget version for one-off replies. */
+export function speakAloud(text: string, lang: Lang, weddingId: string) {
+  void speakAndWait(text, lang, weddingId);
+}
+
+/** Wake the server function when the voice card opens (cold starts made the first command slow). */
+export function warmUpVoice() {
+  fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/wedora?op=health`).catch(() => undefined);
 }

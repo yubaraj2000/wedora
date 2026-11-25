@@ -23,6 +23,16 @@ function serviceKey(): string {
     return "";
   }
 }
+function publicKey(): string {
+  const legacy = env("SUPABASE_ANON_KEY");
+  if (legacy) return legacy;
+  try {
+    const keys = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS"));
+    return keys.default ?? Object.values(keys)[0];
+  } catch {
+    return "";
+  }
+}
 const admin = createClient(env("SUPABASE_URL"), serviceKey(), { auth: { persistSession: false } });
 
 // CORS: only our own web origins (phones and NudgeBee send no Origin header). Extra origins via ALLOWED_ORIGINS.
@@ -419,37 +429,78 @@ async function voice(req: Request) {
   const tStt = Date.now() - t0;
   if (!transcript) return json({ transcript: "", language: lang, action: { intent: "none" }, reply: await translate(["I didn't hear anything. Please try again."], lang).then((x) => x[0]), ms: { stt: tStt } });
 
-  // 2) understand (sarvam-105b, strict JSON). Amounts are cross-checked by our own parser.
-  const { data: depts } = await admin.from("departments").select("id, name, parent_id").eq("wedding_id", m.wedding_id);
+  // 2) understand, with conversation memory: the pending action (awaiting yes/no) and the last few exchanges.
+  let pending: Record<string, unknown> | null = null;
+  try {
+    const raw = String(form.get("pending") ?? "");
+    pending = raw ? JSON.parse(raw.slice(0, 2000)) : null;
+  } catch {
+    pending = null;
+  }
+  let history: { role: string; text: string }[] = [];
+  try {
+    history = (JSON.parse(String(form.get("history") ?? "[]").slice(0, 4000)) as { role: string; text: string }[])
+      .slice(-6)
+      .map((h) => ({ role: h.role === "ai" ? "Wedora" : "Speaker", text: clip(h.text, 300) }));
+  } catch {
+    history = [];
+  }
+
+  // Read what this person may see WITH THEIR OWN PERMISSIONS (RLS), never the service key.
+  const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const asUser = createClient(env("SUPABASE_URL"), publicKey(), {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  });
+  const [{ data: depts }, { data: tasks }] = await Promise.all([
+    asUser.from("departments").select("id, name, parent_id").eq("wedding_id", m.wedding_id),
+    asUser.from("tasks").select("id, title, status, department_id").eq("wedding_id", m.wedding_id).neq("status", "cancelled").order("created_at").limit(40),
+  ]);
   const myDept = (depts ?? []).find((d) => d.id === m.department_id)?.name ?? "";
+  const taskList = (tasks ?? []).map((t, i) => `${i}. ${t.title} [${t.status}]`).join("\n");
+
   const out = await chatJSON<{
-    intent: "expense" | "task" | "none";
+    intent: "expense" | "task" | "task_status" | "ask_status" | "confirm" | "cancel" | "stop" | "none";
     amount_rupees: number;
     description: string;
     paid_to: string;
     task_title: string;
     department: string;
+    task_index: number;
+    new_status: "pending" | "in_progress" | "completed" | "blocked";
     reply_en: string;
   }>(
-    `You help an Indian family run a wedding. The speaker is ${m.display_name} (${m.role}${myDept ? ", " + myDept : ""}). ` +
-      `They spoke ${LANG_NAME[lang] ?? "an Indian language"} (it may be Odia — never confuse Odia with Marathi). ` +
-      `Decide ONE intent: "expense" if they report money paid or to be paid (amount_rupees = whole rupees: 1 lakh = 100000, hazaar/हज़ार/হাজার/ହଜାର = 1000), ` +
-      `"task" if they ask for work to be done, else "none" (greetings, noise, questions). ` +
-      `description/task_title: short English (max 8 words). paid_to: who received the money, in English letters, or "". ` +
-      `department: one of [${(depts ?? []).map((d) => d.name).join(", ")}] or "" — default to the speaker's own department. ` +
-      `reply_en: one short friendly English sentence confirming what you understood and asking them to confirm (or asking them to repeat if "none"). Never invent amounts or names.`,
+    `You are Wedora, a warm helper for an Indian family wedding, in a spoken conversation. The speaker is ${m.display_name} ` +
+      `(${m.role}${myDept ? ", " + myDept : ""}). They speak ${LANG_NAME[lang] ?? "an Indian language"} (it may be Odia — never confuse Odia with Marathi). ` +
+      `Choose ONE intent for their LAST sentence:\n` +
+      `- "confirm" / "cancel": ONLY if an action is pending and they say yes (haan, ha, ହଁ, হ্যাঁ, ok, theek hai, kar do) or no (na, nahi, ନା, না, cancel).\n` +
+      `- "expense": money paid or to be paid (amount_rupees whole rupees; 1 lakh = 100000; hazaar/हज़ार/হাজার/ହଜାର = 1000).\n` +
+      `- "task": asking for new work to be done (task_title).\n` +
+      `- "task_status": saying an existing task is done/started/blocked — task_index = the number from the task list below, new_status.\n` +
+      `- "ask_status": asking how much was spent or how tasks are going (department = the one asked about, or "").\n` +
+      `- "stop": they want to end the conversation (bas, stop, bye, thank you that's all).\n` +
+      `- "none": greetings, noise, other people talking, anything unclear.\n` +
+      `description/task_title: short English (max 8 words). paid_to: who received money, English letters, or "". ` +
+      `department: one of [${(depts ?? []).map((d) => d.name).join(", ")}] or "" (default the speaker's own). task_index: -1 if not a listed task. ` +
+      `reply_en: 1–2 short friendly English sentences. For expense/task: restate it and ask "Shall I save it?". For task_status: say what you changed. ` +
+      `For none: politely ask them to repeat. For stop: a short goodbye. For ask_status/confirm/cancel: "" (the app answers). Never invent amounts, names or tasks.\n\n` +
+      `Pending action awaiting yes/no: ${pending ? JSON.stringify(pending) : "none"}\n` +
+      `Tasks this person can see:\n${taskList || "(none)"}\n` +
+      `Recent conversation:\n${history.map((h) => `${h.role}: ${h.text}`).join("\n") || "(start)"}`,
     transcript,
     {
       type: "object",
       additionalProperties: false,
-      required: ["intent", "amount_rupees", "description", "paid_to", "task_title", "department", "reply_en"],
+      required: ["intent", "amount_rupees", "description", "paid_to", "task_title", "department", "task_index", "new_status", "reply_en"],
       properties: {
-        intent: { type: "string", enum: ["expense", "task", "none"] },
+        intent: { type: "string", enum: ["expense", "task", "task_status", "ask_status", "confirm", "cancel", "stop", "none"] },
         amount_rupees: { type: "integer" },
         description: { type: "string" },
         paid_to: { type: "string" },
         task_title: { type: "string" },
         department: { type: "string" },
+        task_index: { type: "integer" },
+        new_status: { type: "string", enum: ["pending", "in_progress", "completed", "blocked"] },
         reply_en: { type: "string" },
       },
     },
@@ -466,21 +517,39 @@ async function voice(req: Request) {
   let intent = out.intent;
   if (intent === "expense" && amount <= 0) intent = "none";
   if (intent === "task" && !out.task_title.trim()) intent = "none";
+  if ((intent === "confirm" || intent === "cancel") && !pending) intent = "none";
+  const task = intent === "task_status" ? (tasks ?? [])[out.task_index] : undefined;
+  if (intent === "task_status" && !task) intent = "none";
 
-  const reply = (await translate([out.reply_en], lang))[0];
-  return json({
-    transcript,
-    language: lang,
-    action:
-      intent === "expense"
-        ? { intent, amount, description: out.description, paid_to: out.paid_to, amount_source: parsed ? "parser" : "ai" }
-        : intent === "task"
-          ? { intent, title: out.task_title, department_id: dept?.id ?? null, department: dept?.name ?? "" }
-          : { intent: "none" },
-    reply,
-    reply_en: out.reply_en,
-    ms: { stt: tStt, llm: tLlm, total: Date.now() - t0 },
-  });
+  let replyEn = out.reply_en;
+  let action: Record<string, unknown> = { intent: "none" };
+  if (intent === "expense") {
+    action = { intent, amount, description: out.description, paid_to: out.paid_to, amount_source: parsed ? "parser" : "ai" };
+  } else if (intent === "task") {
+    action = { intent, title: out.task_title, department_id: dept?.id ?? null, department: dept?.name ?? "" };
+  } else if (intent === "task_status" && task) {
+    action = { intent, task_id: task.id, title: task.title, from: task.status, status: out.new_status };
+  } else if (intent === "ask_status") {
+    // Numbers come from the database (under this person's RLS), never from the model.
+    const scope = out.department && dept ? dept : null;
+    const { data: exps } = await asUser.from("expenses").select("amount, status, department_id").eq("wedding_id", m.wedding_id);
+    const inScope = (rowDept: string) => !scope || rowDept === scope.id || (depts ?? []).find((d) => d.id === rowDept)?.parent_id === scope.id;
+    const ex = (exps ?? []).filter((e) => inScope(e.department_id));
+    const ts = (tasks ?? []).filter((t) => inScope(t.department_id));
+    const sum = (st: string) => ex.filter((e) => e.status === st).reduce((a, e) => a + Number(e.amount), 0);
+    const inr = (n: number) => "₹" + n.toLocaleString("en-IN");
+    replyEn =
+      `${scope ? scope.name : "Everything you can see"}: ${inr(sum("approved"))} approved, ${inr(sum("pending"))} waiting for approval. ` +
+      `${ts.filter((t) => t.status === "completed").length} of ${ts.length} tasks done.`;
+    action = { intent };
+  } else if (intent === "confirm" || intent === "cancel" || intent === "stop") {
+    action = { intent };
+    if (intent === "cancel") replyEn = "Okay, I won't save it.";
+  }
+  if (intent === "none" && !replyEn.trim()) replyEn = "Sorry, I didn't catch that. Could you say it again?";
+
+  const reply = replyEn.trim() ? (await translate([replyEn], lang))[0] : "";
+  return json({ transcript, language: lang, action, reply, reply_en: replyEn, ms: { stt: tStt, llm: tLlm, total: Date.now() - t0 } });
 }
 
 async function speak(req: Request, body: Record<string, unknown>) {
