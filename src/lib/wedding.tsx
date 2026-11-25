@@ -88,9 +88,14 @@ export function WeddingProvider({ children }: { children: ReactNode }) {
   }, [loadFlags]);
 
   // Keep my own member row and the wedding fresh (role/onboarding changes).
-  useLive(['members', 'weddings'], wedding?.id ?? null, () => {
-    refresh(weddingIdRef.current ?? undefined);
-  });
+  useLive(
+    ['members', 'weddings'],
+    wedding?.id ?? null,
+    () => {
+      refresh(weddingIdRef.current ?? undefined);
+    },
+    0, // no polling here: flags already poll every 10 s
+  );
 
   const value = useMemo<Ctx>(
     () => ({ ready, error, userId, memberships, member, wedding, flags, flagsSource, refresh }),
@@ -123,7 +128,7 @@ export function useFlagValue<T>(name: FlagName, fallback: T): T {
  * Re-run `onChange` whenever rows of these tables change for this wedding (Supabase Realtime, RLS-filtered).
  * Debounced so a burst of inserts triggers one reload.
  */
-export function useLive(tables: string[], weddingId: string | null, onChange: () => void) {
+export function useLive(tables: string[], weddingId: string | null, onChange: () => void, pollMs = 8000) {
   const cb = useRef(onChange);
   cb.current = onChange;
   const key = tables.join(',');
@@ -139,10 +144,15 @@ export function useLive(tables: string[], weddingId: string | null, onChange: ()
       const filter = table === 'weddings' ? `id=eq.${weddingId}` : `wedding_id=eq.${weddingId}`;
       ch.on('postgres_changes', { event: '*', schema: 'public', table, filter }, fire);
     }
-    ch.subscribe();
+    ch.subscribe((status, err) => {
+      if (status !== 'SUBSCRIBED') console.warn('[wedora realtime]', key, status, err?.message ?? '');
+    });
+    // Safety net: venue Wi-Fi / Realtime hiccups should never leave a screen stale.
+    const poll = pollMs > 0 ? setInterval(() => cb.current(), pollMs) : null;
     return () => {
       if (timer) clearTimeout(timer);
+      if (poll) clearInterval(poll);
       supabase.removeChannel(ch);
     };
-  }, [key, weddingId]);
+  }, [key, weddingId, pollMs]);
 }
