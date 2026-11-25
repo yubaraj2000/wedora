@@ -45,3 +45,6 @@ example
 # Wedora: never commit real env values
 .env
 !.env.example
+
+# security audit notes (lists weaknesses; never commit)
+AUDIT.md

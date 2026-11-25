@@ -86,9 +86,18 @@ _Updated as we go._
 - [ ] Voice in Odia / Hindi / Bengali (Sarvam)
 - [ ] NudgeBee AI-outage runbook
 
+## Privacy and safety
+
+- **What we keep:** each person's name and language, and the wedding's departments, tasks, expenses and notifications. Invite phone numbers are visible only to the person who sent the invite and the Family Admin, and are used only to open WhatsApp.
+- **Voice:** recordings go to Sarvam AI (India) to be understood and are **not stored** by Wedora.
+- **Minors:** cousins under 18 may join; the join screen asks them to check with a parent or guardian first (India's DPDP Act).
+- **Leaving:** anyone except the Family Admin can "Leave this wedding" on Home — their name becomes "Former member", their notifications are deleted and their open invite links are revoked.
+- **Security checks done before launch:** Row-Level Security on every table (read-only for the app; every change goes through role-checked database functions), no keys in the app or git history, per-user AI limits (40/min, 400/day) stored in Postgres, CORS limited to our own web origins, phone sessions in the secure keystore, unused email sign-up turned off. Tested with two accounts: no cross-wedding access, no self-promotion, no approving your own expense.
+
 ## Known limits
 
-- Anonymous sign-in: if a relative clears the app's storage, they need a new invite.
+- Anonymous sign-in: if a relative clears the app's storage or reinstalls, they need a new invite.
+- No CAPTCHA on anonymous sign-in yet (per-IP sign-up limits and per-user AI quotas apply).
 - Illustrations are AI-generated in Google Flow and carry Flow's small visible watermark.
 
 ## Measured
