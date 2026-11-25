@@ -1,0 +1,68 @@
+{
+  "_note": "NudgeBee automation (live version v2), exported for reference. Built with NudgeBee's nubi from a plain-English description, reviewed, then fixed (Secrets placeholder) and published. The Flagsmith admin key is NOT here: it is a NudgeBee Secret config named flagsmith_admin_key.",
+  "name": "wedora-ai-outage-runbook",
+  "definition": {
+    "version": "v1",
+    "timeout": "35m",
+    "tasks": [
+      {
+        "id": "check-sarvam-health",
+        "type": "integrations.http",
+        "params": {
+          "method": "GET",
+          "timeout": "10s",
+          "url": "https://kcajcblwviwnrjzyipwi.supabase.co/functions/v1/wedora?op=health"
+        }
+      },
+      {
+        "id": "request-operator-approval",
+        "type": "core.approval",
+        "params": {
+          "approval_options": ["approve", "reject"],
+          "approval_type": "in_app",
+          "message": "Sarvam AI looks down for Wedora (health check failed). Approve to switch AI voice OFF in Flagsmith so families get buttons instead of a broken mic."
+        },
+        "depends_on": ["check-sarvam-health"],
+        "if": "{{ Tasks['check-sarvam-health'].output.status_code == 200 and (Tasks['check-sarvam-health'].output.body.sarvam_ok | default(true)) == false }}",
+        "timeout": "30m"
+      },
+      {
+        "id": "disable-flagsmith-feature-flag",
+        "type": "integrations.http",
+        "params": {
+          "method": "POST",
+          "timeout": "30s",
+          "url": "https://api.flagsmith.com/api/v1/environments/119691/features/303186/versions/",
+          "headers": {
+            "Authorization": "Api-Key {{ Secrets.flagsmith_admin_key }}",
+            "Content-Type": "application/json"
+          },
+          "body": "{\"publish_immediately\": true, \"feature_states_to_update\": [{\"feature_segment\": null, \"enabled\": false, \"feature_state_value\": {\"type\": \"unicode\", \"string_value\": null}}]}"
+        },
+        "depends_on": ["request-operator-approval"],
+        "if": "{{ Tasks['request-operator-approval'].output.status == 'approve' }}",
+        "timeout": "30s"
+      },
+      {
+        "id": "record-mitigation-event",
+        "type": "events.store",
+        "params": {
+          "event": {
+            "title": "Wedora AI voice switched OFF in Flagsmith after Sarvam outage (approved by operator)",
+            "priority": "HIGH",
+            "status": "FIRING",
+            "finding_type": "ai_voice_disabled",
+            "aggregation_key": "wedora-sarvam-outage",
+            "subject_name": "wedora-ai-voice",
+            "source": "automation",
+            "description": "Sarvam AI health check failed for Wedora. Operator approved disabling AI voice feature flag (Flagsmith feature ID: 303186) to fallback to button UI."
+          }
+        },
+        "depends_on": ["disable-flagsmith-feature-flag"],
+        "if": "{{ Tasks['disable-flagsmith-feature-flag'].output.status_code >= 200 and Tasks['disable-flagsmith-feature-flag'].output.status_code < 300 }}"
+      }
+    ],
+    "triggers": [{ "type": "schedule", "params": { "cron": "* * * * *", "overlap_policy": "Skip" } }],
+    "retry_policy": { "maximum_attempts": 3, "initial_interval": "1s", "maximum_interval": "1m", "backoff_coefficient": 2 }
+  }
+}
