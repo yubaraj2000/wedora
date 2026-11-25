@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| 🎥 Demo video | ~4.5 min, submitted with the entry. English narration by an AI voice (the venue was too noisy to record) |
+| 🎥 Demo video | **https://youtu.be/g66vBCOOr88** (under 2 min; English narration by an AI voice, as the venue was too noisy to record) |
 | 🌐 Live web app | **https://yubaraj2000.github.io/wedora/** (opens in any browser; no install) |
 | 📱 Android APK | Release APK (arm64, sideload): see the latest [GitHub release](https://github.com/yubaraj2000/wedora/releases) |
 
