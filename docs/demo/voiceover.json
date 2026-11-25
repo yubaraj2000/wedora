@@ -1,0 +1,140 @@
+[
+  {
+    "id": "s01",
+    "seconds": 8,
+    "screen": "Title card: Wedora logo over a soft festive background; small line 'Built today at Festive Hacks'",
+    "voiceover": "Hello judges. The venue is noisy, so an AI voice reads our narration. Everything you see is ours, built today."
+  },
+  {
+    "id": "s02",
+    "seconds": 9,
+    "screen": "Two big words animate in: Money / Who does what. A crossed-out long wedding checklist fades behind them",
+    "voiceover": "We don't plan the whole wedding. We fix two things that break every Indian family wedding: money, and who does which task."
+  },
+  {
+    "id": "s03",
+    "seconds": 9,
+    "screen": "Org diagram: Family Admin at top, six department boxes (Finance, Logistics, Food & Catering, Decoration, Guest Management, Events & Ceremony), each with head, sub-heads, members; an expense card flows to the right approver",
+    "voiceover": "One admin, six departments, heads and members. Expenses go to the right approver by amount; only whoever must act is notified."
+  },
+  {
+    "id": "s04",
+    "seconds": 7,
+    "screen": "Story card: Mohanty family, Cuttack. Priya & Rahul, 12 December, budget ₹18,00,000. The family mixes English and Hindi.",
+    "voiceover": "Our story: Priya Mohanty's wedding in Cuttack, eighteen lakh budget. Papa is most comfortable in Hindi."
+  },
+  {
+    "id": "s05",
+    "seconds": 8,
+    "screen": "Admin onboarding in English: Wedora asks each question aloud; Papa's spoken answer is heard.",
+    "voiceover": "Papa picks Hindi. Wedora, a calm AI operations manager, asks each question aloud, and Papa answers by voice. Listen."
+  },
+  {
+    "id": "s06",
+    "seconds": 6,
+    "screen": "Confirm card fills: Priya, Rahul, 12 Dec, Cuttack, budget ₹18,00,000.",
+    "voiceover": "Sarvam fills a confirm card, even eighteen lakh said in Hindi. AI proposes; the family confirms."
+  },
+  {
+    "id": "s07",
+    "seconds": 7,
+    "screen": "Ceremony suggestions and starter tasks per department; WhatsApp invite links for heads.",
+    "voiceover": "Flagsmith serves Hindi ceremonies for his language. Sarvam suggests starter tasks, and heads get WhatsApp invites."
+  },
+  {
+    "id": "s08",
+    "seconds": 5,
+    "screen": "Second phone: Mamu opens his invite link, taps বাংলা; short Decoration-only onboarding, spoken in Bengali",
+    "voiceover": "Mamu opens his invite, picks his language, and sees only his own department."
+  },
+  {
+    "id": "s09",
+    "seconds": 5,
+    "screen": "Admin dashboard: ₹18 lakh budget bar with approved / waiting / remaining; six department tiles with head, tasks done, spend",
+    "voiceover": "The dashboard shows eighteen lakh: approved, waiting, remaining, with every department's progress."
+  },
+  {
+    "id": "s10",
+    "seconds": 5,
+    "screen": "'Who joined' tree (level, invited by, time); invite links list with uses and a Revoke button; then a member's home with only their tasks and expenses",
+    "voiceover": "Who joined, invited by whom, and when. Members see only their work."
+  },
+  {
+    "id": "s11",
+    "seconds": 7,
+    "screen": "Sponsor card 'Sarvam AI': speech turning into text, latency badge ~0.3 s.",
+    "voiceover": "First, Sarvam. Saaras turns Hindi, English and other Indian languages into text in about zero point three seconds."
+  },
+  {
+    "id": "s12",
+    "seconds": 10,
+    "screen": "Diagram: speech → sarvam-105b with strict JSON schema → proposal card (no direct write) → translation → Bulbul voice; badge 'full voice turn 1–2 s on server'",
+    "voiceover": "Sarvam's one-oh-five B model proposes through strict schemas, never writing directly. Bulbul speaks each translated line. A voice turn: one to two seconds."
+  },
+  {
+    "id": "s13",
+    "seconds": 7,
+    "screen": "Sponsor card 'Flagsmith'; Flagsmith dashboard with segments Admin / Head / Sub-head / Member; flags: budget_dashboard, invites, ai_task_planner, voice",
+    "voiceover": "Flagsmith sets each family level's powers, on our server, from the database. Nobody can fake their level."
+  },
+  {
+    "id": "s14",
+    "seconds": 8,
+    "screen": "Live: in Flagsmith, voice toggled ON for the Member segment; cut to member's phone, mic button appears (timer ~10 s)",
+    "voiceover": "Members have no voice. Watch: we switch it on in Flagsmith, and the mic appears within ten seconds."
+  },
+  {
+    "id": "s15",
+    "seconds": 7,
+    "screen": "approval_limits JSON (sub-head ₹5,000, head ₹25,000); an approval card with 'Why this came to you'; ceremony_suggestions by language; ai_voice kill switch",
+    "voiceover": "Approval limits, five and twenty-five thousand, stay server-side. Each approval card explains why it came to you."
+  },
+  {
+    "id": "s16",
+    "seconds": 8,
+    "screen": "Sponsor card 'NudgeBee'; runbook built with nubi: every-minute health check of Wedora; clock showing 11 pm, night before the wedding",
+    "voiceover": "NudgeBee guards the night before the wedding. Using Nubi, NudgeBee's AI, we built a runbook that checks Wedora every minute."
+  },
+  {
+    "id": "s17",
+    "seconds": 10,
+    "screen": "Outage drill ON → runbook runs → approval request → Approve → ai_voice OFF in Flagsmith, HIGH event logged → app mic disappears, buttons shown",
+    "voiceover": "If Sarvam is down, it asks the operator; on approval, it turns AI voice off in Flagsmith, logging a high event. Families see buttons instead."
+  },
+  {
+    "id": "s18",
+    "seconds": 7,
+    "screen": "Live conversation: Arjun (Decoration sub-head, app in English) taps Talk with Wedora.",
+    "voiceover": "Now the finale, a live, hands-free conversation. Bapi tells Wedora, in Hindi, that the tent vendor was paid twelve thousand. Listen."
+  },
+  {
+    "id": "s19",
+    "seconds": 7,
+    "screen": "Mamu's approval card for the ₹12,000 tent payment, 'Why this came to you'.",
+    "voiceover": "He says yes. Wedora asked before saving any money, recorded it, and sent it to Mamu, the Decoration head, because it is above five thousand."
+  },
+  {
+    "id": "s20",
+    "seconds": 6,
+    "screen": "Mamu's phone: approval card, taps Approve; admin dashboard Decoration spend updates; then 'How much has Decoration spent?' answered from the database",
+    "voiceover": "Mamu approves on his phone; the dashboard updates. Decoration's spending? Answered from the database."
+  },
+  {
+    "id": "s21",
+    "seconds": 4,
+    "screen": "Close-up of the confirm prompt; text 'Money is always confirm-first'",
+    "voiceover": "Money is always confirm-first. That's the part we're proudest of."
+  },
+  {
+    "id": "s22",
+    "seconds": 8,
+    "screen": "Checklist: row-level security on every table, no keys in the app, per-user AI limits, privacy notice for younger relatives",
+    "voiceover": "Security, checked before launch: row-level security everywhere, no keys in the app, per-user AI limits, and a privacy notice."
+  },
+  {
+    "id": "s23",
+    "seconds": 12,
+    "screen": "End card: yubaraj2000.github.io/wedora, Android APK badge, 'AI-assisted build disclosed in README', Wedora logo",
+    "voiceover": "Live at yubaraj two thousand dot github dot io slash wedora, plus an Android APK. The README discloses our AI-assisted build. Thank you, from our family to yours."
+  }
+]

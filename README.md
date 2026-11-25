@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| 🎥 Demo video | _coming before submission_ |
+| 🎥 Demo video | ~4.5 min, submitted with the entry. English narration by an AI voice (the venue was too noisy to record) |
 | 🌐 Live web app | **https://yubaraj2000.github.io/wedora/** (opens in any browser; no install) |
 | 📱 Android APK | Release APK (arm64, sideload): see the latest [GitHub release](https://github.com/yubaraj2000/wedora/releases) |
 
@@ -140,6 +140,7 @@ This project was built during the hackathon by [yubaraj2000](https://github.com/
 - **Claude Code** — wrote most of the code and SQL with me, set up the Supabase project and Flagsmith flags, and ran the builds. I reviewed and can explain every part.
 - **Google Flow (Nano Banana 2.1)** — generated the Pattachitra-style illustrations and app icon.
 - **Figma (via Claude Code)** — UI screen template.
+- **Demo video** — narration and the spoken Hindi lines of Papa and Bapi are Sarvam Bulbul text-to-speech, because the venue was too noisy to record; Wedora's replies are the app's own Sarvam voice. The closing clip was made with Google Flow (Veo). Every app screen in the video is a real screenshot of the live app.
 - **NudgeBee nubi** — generated the runbook from a plain-English description, which we reviewed before building.
 - **Parallel AI subagents** built independent screens from a shared typed API; every change was type-checked, linted and tested (119 unit tests) before commit. Voice code was written fresh from lessons learned earlier, not copied from earlier projects.
 
