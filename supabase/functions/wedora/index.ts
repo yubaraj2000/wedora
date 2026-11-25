@@ -497,7 +497,8 @@ async function voice(req: Request, form: FormData) {
     new_status: "pending" | "in_progress" | "completed" | "blocked";
     reply_en: string;
   }>(
-    `You are Wedora, a warm helper for an Indian family wedding, in a spoken conversation. The speaker is ${m.display_name} ` +
+    `You are Wedora, a calm and professional wedding operations manager for an Indian family, in a spoken conversation. ` +
+      `Speak like an experienced event manager: brief, clear, polite; no exclamation marks, no flattery, no small talk. The speaker is ${m.display_name} ` +
       `(${m.role}${myDept ? ", " + myDept : ""}). They speak ${LANG_NAME[lang] ?? "an Indian language"} (it may be Odia — never confuse Odia with Marathi). ` +
       `Choose ONE intent for their LAST sentence:\n` +
       `- "confirm" / "cancel": ONLY if an action is pending and they say yes (haan, ha, ହଁ, হ্যাঁ, ok, theek hai, kar do) or no (na, nahi, ନା, না, cancel).\n` +
@@ -509,8 +510,8 @@ async function voice(req: Request, form: FormData) {
       `- "none": greetings, noise, other people talking, anything unclear.\n` +
       `description/task_title: short English (max 8 words). paid_to: who received money, English letters, or "". ` +
       `department: one of [${(depts ?? []).map((d) => d.name).join(", ")}] or "" (default the speaker's own). task_index: -1 if not a listed task. ` +
-      `reply_en: 1–2 short friendly English sentences. For expense/task: restate it and ask "Shall I save it?". For task_status: say what you changed. ` +
-      `For none: politely ask them to repeat. For stop: a short goodbye. For ask_status/confirm/cancel: "" (the app answers). Never invent amounts, names or tasks.\n\n` +
+      `reply_en: one or two short, professional English sentences. For expense/task: restate the facts and ask "Shall I record it?". For task_status: state what you updated. ` +
+      `For none: ask them to repeat. For stop: "Ending the conversation." For ask_status/confirm/cancel: "" (the app answers). Never invent amounts, names or tasks.\n\n` +
       `Pending action awaiting yes/no: ${pending ? JSON.stringify(pending) : "none"}\n` +
       `Tasks this person can see:\n${taskList || "(none)"}\n` +
       `Recent conversation:\n${history.map((h) => `${h.role}: ${h.text}`).join("\n") || "(start)"}`,
@@ -571,9 +572,9 @@ async function voice(req: Request, form: FormData) {
     action = { intent };
   } else if (intent === "confirm" || intent === "cancel" || intent === "stop") {
     action = { intent };
-    if (intent === "cancel") replyEn = "Okay, I won't save it.";
+    if (intent === "cancel") replyEn = "Understood. I have not recorded it.";
   }
-  if (intent === "none" && !replyEn.trim()) replyEn = "Sorry, I didn't catch that. Could you say it again?";
+  if (intent === "none" && !replyEn.trim()) replyEn = "I did not catch that. Please say it again.";
 
   const reply = replyEn.trim() ? (await translate([replyEn], lang))[0] : "";
   return json({ transcript, language: lang, action, reply, reply_en: replyEn, ms: { stt: tStt, llm: tLlm, total: Date.now() - t0 } });
@@ -586,7 +587,22 @@ async function speak(req: Request, body: Record<string, unknown>) {
   const text = clip(body.text, 1200);
   const lang = LANG_NAME[String(body.lang)] ? String(body.lang) : "hi-IN";
   if (!text.trim()) throw new HttpError(400, "nothing to say");
-  const r = await sarvam("/text-to-speech", { text, target_language_code: lang, model: "bulbul:v4-flash" });
+  // Calm, professional personas (the default v4 persona is an advertising style). Odia has no dedicated
+  // persona; any v4 persona reads Odia because the language code selects the language.
+  const VOICE: Record<string, string> = {
+    "en-IN": "neha_en_customer",
+    "hi-IN": "ritu_hi_customer",
+    "bn-IN": "arnab_bn_conversation",
+    "od-IN": "ritu_hi_customer",
+  };
+  const r = await sarvam("/text-to-speech", {
+    text,
+    target_language_code: lang,
+    model: "bulbul:v4-flash",
+    speaker: VOICE[lang] ?? "neha_en_customer",
+    pace: 0.95,
+    temperature: 0.35,
+  });
   return json({ audio_b64: r.audios?.[0] ?? "", mime: "audio/wav" });
 }
 

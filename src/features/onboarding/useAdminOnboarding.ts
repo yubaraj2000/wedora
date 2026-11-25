@@ -37,22 +37,22 @@ import {
 } from './model';
 
 const Q = {
-  greet: "Namaste! I'm Wedora. I'll help you set up your family's wedding. Which language should we talk in?",
+  greet: 'Namaste. I am Wedora, your wedding operations manager. I will set up your wedding plan with you in seven short steps. Which language would you like to use?',
   greetNative: 'ଆପଣ କେଉଁ ଭାଷାରେ କଥା ହେବେ? · आप किस भाषा में बात करेंगे? · আপনি কোন ভাষায় কথা বলবেন?',
-  about: 'Tell me about the wedding — whose wedding is it, when, and where? And what is your name?',
-  confirm: "Here's what I understood. Please check and fix anything that's wrong.",
-  budget: 'What is the total budget?',
-  budgetUnclear: 'Sorry, I could not understand the amount. Try something like "18 lakh".',
-  budgetRight: 'Is that right?',
-  ceremonies: "Which ceremonies are you planning? I've suggested the usual ones for your tradition — untick any you don't need.",
+  about: 'Step 1. Please tell me the names of the bride and groom, the wedding date, the city, and your own name.',
+  confirm: 'This is what I have recorded. Please check each detail and correct anything that is wrong.',
+  budget: 'Step 2. What is the total budget for the wedding?',
+  budgetUnclear: 'I could not read that amount. Please say it like "18 lakh".',
+  budgetRight: 'Please confirm this amount.',
+  ceremonies: 'Step 3. These are the usual ceremonies for your tradition. Untick any you will not hold, and add any that are missing.',
   ceremoniesNone: 'Please keep at least one ceremony.',
-  tasks: 'Here are starter tasks for each department. Untick any you don\'t want.',
-  tasksFailed: 'I could not suggest tasks right now.',
-  heads: 'Who will head each department? Pick from your contacts or type a name and number.',
-  invites: 'Send each head their personal link on WhatsApp.',
-  noInvites: 'No heads chosen yet — you can invite people later from the dashboard.',
-  resume: "Welcome back! Let's continue setting up your wedding.",
-  error: "Sorry, that didn't work. Please try again.",
+  tasks: 'Step 4. I have prepared starter tasks for each department. Untick any you do not need.',
+  tasksFailed: 'I could not prepare tasks just now. You can retry or skip this step.',
+  heads: 'Step 5. Who will head each department? Choose from your contacts, or enter a name and phone number.',
+  invites: 'Step 6. Each head has a personal invitation link. Send it to them on WhatsApp.',
+  noInvites: 'No heads selected. You can invite them later from the dashboard.',
+  resume: 'Welcome back. We will continue where you stopped.',
+  error: 'That did not go through. Please try again.',
 };
 
 export function useAdminOnboarding() {

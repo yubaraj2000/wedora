@@ -146,7 +146,7 @@ export function VoiceButton() {
       if (convRef.current) {
         if (!idleSince.current) idleSince.current = t.startedAt;
         if (Date.now() - idleSince.current > IDLE_END_MS) {
-          await say('I will be here when you need me. Goodbye!');
+          await say('I will stop listening now. Tap the mic when you need me.');
           endConversation();
         } else {
           void startTurn(); // keep listening quietly
@@ -167,7 +167,7 @@ export function VoiceButton() {
       await handle(r);
     } catch (e) {
       setMessage({ text: (e as Error).message, bad: true });
-      if (convRef.current) await say('Sorry, something went wrong. Please say it again.');
+      if (convRef.current) await say('That did not go through. Please say it again.');
     }
     if (convRef.current) void startTurn();
     else setPhase('idle');
@@ -196,7 +196,7 @@ export function VoiceButton() {
         return;
       }
       case 'stop':
-        await say('', r.reply || (await sayNow(langRef.current, 'Goodbye!')));
+        await say('', r.reply || (await sayNow(langRef.current, 'Ending the conversation.')));
         endConversation();
         return;
       default:
@@ -221,10 +221,10 @@ export function VoiceButton() {
             : r.expense.approval_level === 'head'
               ? `above ${formatINR(r.limits.sub_head)}`
               : `above ${formatINR(r.limits.head)}`;
-        doneEn = `Saved. ${formatINR(p.amount)} sent to ${appr?.display_name ?? 'the approver'} (${ROLE_LABEL[appr?.role ?? 'admin']}) for approval, because it is ${why}.`;
+        doneEn = `Recorded. ${formatINR(p.amount)} has been sent to ${appr?.display_name ?? 'the approver'} (${ROLE_LABEL[appr?.role ?? 'admin']}) for approval, as it is ${why}.`;
       } else {
         await createTask(p.department_id ?? member!.department_id ?? '', p.title, null, 'voice');
-        doneEn = `Task added for ${p.department}: ${p.title}.`;
+        doneEn = `Task recorded for ${p.department}: ${p.title}.`;
       }
       setPend(null);
       const local = await sayNow(langRef.current, doneEn);
@@ -232,7 +232,7 @@ export function VoiceButton() {
       await say(doneEn, local);
     } catch (e) {
       setMessage({ text: (e as Error).message, bad: true });
-      await say('Sorry, I could not save that.');
+      await say('I could not record that. Please try again.');
     }
   }
 
@@ -249,7 +249,7 @@ export function VoiceButton() {
     idleSince.current = 0;
     langRef.current = hint === 'auto' ? member!.language : hint;
     void (async () => {
-      await say('Namaste! Tell me what was paid, what needs doing, or ask how things are going.');
+      await say('Namaste. I am listening. Tell me a payment, a task, or ask for a status update.');
       if (convRef.current) void startTurn();
     })();
   }

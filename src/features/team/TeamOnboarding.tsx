@@ -61,18 +61,18 @@ export function TeamOnboarding() {
   const myTasks = useMemo(() => tasks.filter((x) => x.department_id === member?.department_id), [tasks, member?.department_id]);
 
   const L = {
-    member: `Welcome ${name}! You're in ${deptName}. Your head will assign tasks; you can add expenses and update tasks.`,
-    greetHead: `Namaste ${name}! You lead ${deptName} for ${wedName}. Let's set up your team in 2 minutes.`,
-    greetSub: `Namaste ${name}! You lead the ${deptName} sub-team for ${wedName}. Let's set up your team in 2 minutes.`,
+    member: `Welcome, ${name}. You are a member of ${deptName}. Your head assigns tasks; you can record expenses and update task status.`,
+    greetHead: `Namaste, ${name}. You are the head of ${deptName} for ${wedName}. We will set up your department in two short steps.`,
+    greetSub: `Namaste, ${name}. You lead the ${deptName} sub-team for ${wedName}. We will set up your team in two short steps.`,
     tasksHave: `Here are the tasks for ${deptName} so far:`,
     tasksNone: `There are no tasks for ${deptName} yet.`,
-    wantMore: 'Want me to suggest more?',
+    wantMore: 'Shall I prepare more tasks for your department?',
     pickTasks: 'Tick the ones you want to add.',
     team: isHead
       ? 'Add people to your team. Sub-heads lead a small sub-team; members do the work.'
       : 'Add the members of your sub-team. They will do the work and can add expenses.',
     invites: 'Your invites are ready. Send each one on WhatsApp.',
-    noInvites: 'No invites yet — you can invite people later from the Team screen.',
+    noInvites: 'No invitations yet. You can invite people later from the Team screen.',
     oops: 'Something went wrong:',
   };
   const t = useT(lang, [
