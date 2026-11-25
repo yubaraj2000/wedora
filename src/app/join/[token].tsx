@@ -1,8 +1,9 @@
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, useWindowDimensions, View } from 'react-native';
 
+import { PrivacyNote } from '@/components/PrivacyNote';
 import { Button, Card, Field, LanguagePicker, Pill, Screen, Txt } from '@/components/ui';
 import { C, S } from '@/constants/theme';
 import { acceptInvite, invitePreview } from '@/lib/api';
@@ -27,24 +28,23 @@ export default function JoinScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadingRef = useRef(false);
   useEffect(() => {
-    if (!ready || !token) return;
-    let alive = true;
-    setLoading(true);
+    if (!ready || !token || loadingRef.current) return;
+    loadingRef.current = true;
     invitePreview(token)
       .then((p) => {
-        if (!alive) return;
         setPreview(p);
         if (p) {
           setName(p.invitee_name ?? '');
           setLang(p.wedding_language ?? 'en-IN');
         }
       })
-      .catch((e) => alive && setLoadError((e as Error).message))
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
+      .catch((e) => setLoadError((e as Error).message))
+      .finally(() => {
+        setLoading(false);
+        loadingRef.current = false;
+      });
   }, [ready, token]);
 
   const roleLabel = preview ? ROLE_LABEL[preview.role] : '';
@@ -161,6 +161,7 @@ export default function JoinScreen() {
               <LanguagePicker value={lang} onChange={setLang} />
               <View style={{ height: S.sm }} />
               <Button title={tJoin} loading={busy} onPress={join} disabled={!name.trim()} />
+              <PrivacyNote lang={lang} />
             </>
           )}
           {error ? (

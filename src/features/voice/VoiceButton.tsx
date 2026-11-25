@@ -84,7 +84,7 @@ export function VoiceButton() {
       const r = await understand(recorder.uri, wedding!.id, hint);
       setResult(r);
       setPhase(r.action.intent === 'none' ? 'done' : 'confirm');
-      speakAloud(r.reply, r.language);
+      speakAloud(r.reply, r.language, wedding!.id);
     } catch (e) {
       setPhase('error');
       setMessage((e as Error).message);
@@ -115,7 +115,7 @@ export function VoiceButton() {
       const local = await sayNow(lang, doneEn);
       setMessage(local);
       setPhase('done');
-      speakAloud(local, lang);
+      speakAloud(local, lang, wedding.id);
     } catch (e) {
       setPhase('error');
       setMessage((e as Error).message);

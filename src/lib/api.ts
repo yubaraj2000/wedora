@@ -127,6 +127,7 @@ export const decideExpense = async (expenseId: string, approve: boolean, note?: 
   check(await supabase.rpc('decide_expense', { p_expense: expenseId, p_approve: approve, p_note: note ?? null }));
 export const completeOnboarding = async (w: string) => check(await supabase.rpc('complete_onboarding', { p_wedding: w }));
 export const markRead = async (w: string) => check(await supabase.rpc('mark_read', { p_wedding: w }));
+export const leaveWedding = async (w: string) => check(await supabase.rpc('leave_wedding', { p_wedding: w }));
 
 // ---------- server function (Flagsmith + Sarvam) ----------
 export const getFeatures = (w: string) => fn<{ flags: Flags; source: string; role: Role }>('features', { wedding_id: w });

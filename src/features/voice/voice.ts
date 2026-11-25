@@ -61,9 +61,9 @@ export async function understand(uri: string, weddingId: string, lang: Lang | 'a
 let player: ReturnType<typeof createAudioPlayer> | null = null;
 
 /** Speak a line aloud in the given language (Sarvam Bulbul). Fire-and-forget. */
-export async function speakAloud(text: string, lang: Lang) {
+export async function speakAloud(text: string, lang: Lang, weddingId: string) {
   try {
-    const { audio_b64, mime } = await fn<{ audio_b64: string; mime: string }>('speak', { text, lang });
+    const { audio_b64, mime } = await fn<{ audio_b64: string; mime: string }>('speak', { text, lang, wedding_id: weddingId });
     if (!audio_b64) return;
     player?.remove();
     player = createAudioPlayer({ uri: `data:${mime};base64,${audio_b64}` });

@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { PrivacyNote } from '@/components/PrivacyNote';
 import { Button, LanguagePicker, Screen } from '@/components/ui';
 import { C, S } from '@/constants/theme';
 import { CeremonyPanel } from '@/features/onboarding/CeremonyPanel';
@@ -42,7 +43,12 @@ export default function AdminOnboardingScreen() {
 function StepPanel({ o, L }: { o: AdminOnboarding; L: ReturnType<typeof useLabels> }) {
   switch (o.step) {
     case 'lang':
-      return <LanguagePicker value={null} onChange={o.chooseLang} />;
+      return (
+        <>
+          <LanguagePicker value={null} onChange={o.chooseLang} />
+          <PrivacyNote lang="en-IN" />
+        </>
+      );
     case 'about':
       return (
         <TextAsk

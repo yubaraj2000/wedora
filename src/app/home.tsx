@@ -6,6 +6,7 @@ import { Button, Card, EMPTY_IMAGES, EmptyState, ListRow, Pill, Screen, SectionH
 import { C, R, S } from '@/constants/theme';
 import { ApprovalCard, MyExpenseRow } from '@/features/home/ExpenseCard';
 import { FlagsCard } from '@/features/home/FlagsCard';
+import { LeaveWedding } from '@/features/home/LeaveWedding';
 import { canChangeTask, canDecide, hhmm, isLeader, myDeptScope, taskTitle } from '@/features/home/logic';
 import { TaskRow } from '@/features/home/TaskRow';
 import { useWeddingData } from '@/features/home/useWeddingData';
@@ -185,6 +186,7 @@ export default function Home() {
       )}
 
       <FlagsCard />
+      <LeaveWedding />
     </Screen>
   );
 }
