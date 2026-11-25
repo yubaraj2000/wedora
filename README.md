@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | 🎥 Demo video | _coming before submission_ |
-| 🌐 Live web app | _coming before submission_ |
+| 🌐 Live web app | **https://yubaraj2000.github.io/wedora/** (opens in any browser; no install) |
 | 📱 Android APK | _optional, if time allows_ |
 
 ---
